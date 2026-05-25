@@ -1,0 +1,38 @@
+name: surabaya_heritage_app
+description: Aplikasi direktori tempat bersejarah di Surabaya berbasis peta.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # HTTP & API
+  http: ^1.2.0
+
+  # State Management
+  provider: ^6.1.2
+
+  # Maps & Location
+  google_maps_flutter: ^2.6.0
+  geolocator: ^13.0.1
+
+  # Storage
+  shared_preferences: ^2.2.3
+
+  # UI
+  cached_network_image: ^3.3.1
+  flutter_rating_bar: ^4.0.1
+  shimmer: ^3.0.0
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
