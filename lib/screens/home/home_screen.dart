@@ -1,0 +1,365 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../providers/place_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../widgets/place_card.dart';
+import '../../widgets/category_chip.dart';
+import '../../widgets/loading_widget.dart';
+import '../map/map_screen.dart';
+import '../detail/detail_screen.dart';
+import '../auth/login_screen.dart';
+import '../bookmark/bookmark_screen.dart';
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final _searchCtrl = TextEditingController();
+  int _currentIndex = 0;
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: const [
+          _HomeTab(),
+          MapScreen(),
+          BookmarkScreen(),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: (i) {
+          // Cek login untuk tab bookmark
+          if (i == 2) {
+            final auth = context.read<AuthProvider>();
+            if (!auth.isLoggedIn) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+              return;
+            }
+          }
+          setState(() => _currentIndex = i);
+        },
+        destinations: const [
+          NavigationDestination(
+            icon:  Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Beranda',
+          ),
+          NavigationDestination(
+            icon:  Icon(Icons.map_outlined),
+            selectedIcon: Icon(Icons.map),
+            label: 'Peta',
+          ),
+          NavigationDestination(
+            icon:  Icon(Icons.bookmark_outline),
+            selectedIcon: Icon(Icons.bookmark),
+            label: 'Tersimpan',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeTab extends StatelessWidget {
+  const _HomeTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            color:   const Color(0xFF1E3A5F),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Surabaya Heritage',
+                          style: TextStyle(
+                            color:      Colors.white,
+                            fontSize:   22,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'Jelajahi tempat bersejarah',
+                          style: TextStyle(
+                            color:   Colors.white70,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                    // Tombol login/profile
+                    Consumer<AuthProvider>(
+                      builder: (_, auth, __) => IconButton(
+                        icon: Icon(
+                          auth.isLoggedIn
+                              ? Icons.account_circle
+                              : Icons.login,
+                          color: Colors.white,
+                          size:  28,
+                        ),
+                        onPressed: () {
+                          if (auth.isLoggedIn) {
+                            _showProfileMenu(context, auth);
+                          } else {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const LoginScreen(),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Search bar
+                _SearchBar(),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+          // Filter kategori
+          const _CategoryFilter(),
+          // Daftar tempat
+          const Expanded(child: _PlaceList()),
+        ],
+      ),
+    );
+  }
+
+  void _showProfileMenu(BuildContext context, AuthProvider auth) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.account_circle, size: 60,
+                color: Color(0xFF1E3A5F)),
+            const SizedBox(height: 8),
+            Text(
+              auth.user?.name ?? '',
+              style: const TextStyle(
+                fontSize:   18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(auth.user?.email ?? '',
+                style: const TextStyle(color: Colors.grey)),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                icon:  const Icon(Icons.logout, color: Colors.red),
+                label: const Text('Keluar',
+                    style: TextStyle(color: Colors.red)),
+                onPressed: () {
+                  auth.logout();
+                  Navigator.pop(context);
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchBar extends StatelessWidget {
+  final _ctrl = TextEditingController();
+
+  _SearchBar();
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _ctrl,
+      onChanged: (val) =>
+          context.read<PlaceProvider>().searchPlaces(val),
+      decoration: InputDecoration(
+        hintText:    'Cari tempat bersejarah...',
+        hintStyle:   const TextStyle(color: Colors.grey),
+        prefixIcon:  const Icon(Icons.search, color: Colors.grey),
+        suffixIcon: _ctrl.text.isNotEmpty
+            ? IconButton(
+                icon: const Icon(Icons.clear, color: Colors.grey),
+                onPressed: () {
+                  _ctrl.clear();
+                  context.read<PlaceProvider>().searchPlaces('');
+                },
+              )
+            : null,
+        filled:      true,
+        fillColor:   Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide:   BorderSide.none,
+        ),
+        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+      ),
+    );
+  }
+}
+
+class _CategoryFilter extends StatelessWidget {
+  const _CategoryFilter();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<PlaceProvider>(
+      builder: (_, provider, __) {
+        if (provider.categories.isEmpty) return const SizedBox.shrink();
+        return Container(
+          color:  Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                // Chip "Semua"
+                GestureDetector(
+                  onTap: () => provider.filterByCategory(null),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin:   const EdgeInsets.only(right: 8),
+                    padding:  const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: provider.selectedCategoryId == null
+                          ? const Color(0xFF1E3A5F)
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: const Color(0xFF1E3A5F), width: 1.5),
+                    ),
+                    child: Text(
+                      'Semua',
+                      style: TextStyle(
+                        color: provider.selectedCategoryId == null
+                            ? Colors.white
+                            : const Color(0xFF1E3A5F),
+                        fontWeight: FontWeight.w600,
+                        fontSize:   13,
+                      ),
+                    ),
+                  ),
+                ),
+                // Chip per kategori
+                ...provider.categories.map(
+                  (cat) => CategoryChip(
+                    category:   cat,
+                    isSelected:
+                        provider.selectedCategoryId == cat.id,
+                    onTap: () => provider.filterByCategory(cat.id),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PlaceList extends StatelessWidget {
+  const _PlaceList();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<PlaceProvider>(
+      builder: (_, provider, __) {
+        if (provider.isLoading) return const LoadingWidget();
+
+        if (provider.errorMessage != null) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline,
+                    size: 60, color: Colors.grey),
+                const SizedBox(height: 16),
+                Text(provider.errorMessage!,
+                    style: const TextStyle(color: Colors.grey)),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () => provider.fetchPlaces(),
+                  child: const Text('Coba Lagi'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        if (provider.places.isEmpty) {
+          return const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.search_off, size: 60, color: Colors.grey),
+                SizedBox(height: 16),
+                Text('Tidak ada tempat ditemukan',
+                    style: TextStyle(color: Colors.grey)),
+              ],
+            ),
+          );
+        }
+
+        return RefreshIndicator(
+          onRefresh: () => provider.fetchPlaces(),
+          child: ListView.builder(
+            padding:     const EdgeInsets.symmetric(vertical: 8),
+            itemCount:   provider.places.length,
+            itemBuilder: (_, i) => PlaceCard(
+              place: provider.places[i],
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => DetailScreen(
+                    placeId: provider.places[i].id,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
