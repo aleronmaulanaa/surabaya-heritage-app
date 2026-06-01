@@ -6,6 +6,7 @@ class BookmarkProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
 
   List<PlaceModel> _bookmarks    = [];
+  List<Map<String, dynamic>> _rawBookmarks = [];
   bool             _isLoading    = false;
   String?          _errorMessage;
 
@@ -20,7 +21,11 @@ class BookmarkProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _bookmarks = await _apiService.getBookmarks(token);
+      _rawBookmarks = await _apiService.getBookmarksRaw(token);
+      _bookmarks    = _rawBookmarks
+          .where((e) => e['places'] != null)
+          .map((e) => PlaceModel.fromJson(e['places']))
+          .toList();
     } catch (e) {
       _errorMessage = 'Gagal memuat bookmark';
     }
@@ -46,5 +51,11 @@ class BookmarkProvider extends ChangeNotifier {
   // Cek apakah tempat sudah dibookmark
   bool isBookmarked(int placeId) {
     return _bookmarks.any((p) => p.id == placeId);
+  }
+
+  int? getBookmarkId(int placeId) {
+    final idx = _rawBookmarks
+        .indexWhere((e) => e['places']?['id'] == placeId);
+    return idx != -1 ? _rawBookmarks[idx]['id'] : null;
   }
 }

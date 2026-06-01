@@ -102,57 +102,120 @@ class ApiService {
     }
   }
 
-  Future<bool> addReview({
-    required int placeId,
-    required int rating,
-    required String comment,
-    required String token,
-  }) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/reviews'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'place_id': placeId,
-          'rating':   rating,
-          'comment':  comment,
-        }),
-      ).timeout(const Duration(seconds: 10));
-
-      return response.statusCode == 201;
-    } catch (e) {
-      return false;
+  Future<Map<String, dynamic>> addReview({
+  required int    placeId,
+  required int    rating,
+  required String comment,
+  required String token,
+  String?         photoUrl,
+}) async {
+  try {
+    final Map<String, dynamic> body = {
+      'place_id': placeId,
+      'rating':   rating,
+      'comment':  comment,
+    };
+    if (photoUrl != null && photoUrl.isNotEmpty) {
+      body['photo_url'] = photoUrl;
     }
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/reviews'),
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(body),
+    ).timeout(const Duration(seconds: 10));
+
+    final data = jsonDecode(response.body);
+    return {
+      'success': response.statusCode == 201,
+      'message': data['message'] ?? 'Terjadi kesalahan',
+    };
+  } catch (e) {
+    return {'success': false, 'message': 'Tidak dapat terhubung ke server'};
   }
+}
+
+  Future<Map<String, dynamic>> editReview({
+  required int    reviewId,
+  required int    rating,
+  required String comment,
+  required String token,
+  String?         photoUrl,
+}) async {
+  try {
+    final Map<String, dynamic> body = {
+      'rating':  rating,
+      'comment': comment,
+    };
+    if (photoUrl != null) body['photo_url'] = photoUrl;
+
+    final response = await http.put(
+      Uri.parse('$_baseUrl/reviews/$reviewId'),
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(body),
+    ).timeout(const Duration(seconds: 10));
+
+    final data = jsonDecode(response.body);
+    return {
+      'success': response.statusCode == 200,
+      'message': data['message'] ?? 'Terjadi kesalahan',
+    };
+  } catch (e) {
+    return {'success': false, 'message': 'Tidak dapat terhubung ke server'};
+  }
+}
+
+Future<Map<String, dynamic>> deleteReview({
+  required int    reviewId,
+  required String token,
+}) async {
+  try {
+    final response = await http.delete(
+      Uri.parse('$_baseUrl/reviews/$reviewId'),
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    ).timeout(const Duration(seconds: 10));
+
+    final data = jsonDecode(response.body);
+    return {
+      'success': response.statusCode == 200,
+      'message': data['message'] ?? 'Terjadi kesalahan',
+    };
+  } catch (e) {
+    return {'success': false, 'message': 'Tidak dapat terhubung ke server'};
+  }
+}
 
   // ── BOOKMARKS ────────────────────────────────────────────────
 
-  Future<List<PlaceModel>> getBookmarks(String token) async {
-    try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/bookmarks'),
-        headers: {
-          'Content-Type':  'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(const Duration(seconds: 10));
+  Future<List<Map<String, dynamic>>> getBookmarksRaw(String token) async {
+  try {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/bookmarks'),
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    ).timeout(const Duration(seconds: 10));
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final List list = data['data'];
-        return list
-            .where((e) => e['places'] != null)
-            .map((e) => PlaceModel.fromJson(e['places']))
-            .toList();
-      }
-      return [];
-    } catch (e) {
-      throw Exception('Gagal mengambil bookmark: $e');
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final List list = data['data'];
+      return list.cast<Map<String, dynamic>>();
     }
+    return [];
+  } catch (e) {
+    throw Exception('Gagal mengambil bookmark: $e');
   }
+}
 
   Future<bool> addBookmark(int placeId, String token) async {
     try {

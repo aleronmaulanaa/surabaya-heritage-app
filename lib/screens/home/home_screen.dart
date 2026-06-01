@@ -9,6 +9,7 @@ import '../map/map_screen.dart';
 import '../detail/detail_screen.dart';
 import '../auth/login_screen.dart';
 import '../bookmark/bookmark_screen.dart';
+import '../../providers/bookmark_provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -42,19 +43,21 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (i) {
-          // Cek login untuk tab bookmark
-          if (i == 2) {
-            final auth = context.read<AuthProvider>();
-            if (!auth.isLoggedIn) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              );
-              return;
-            }
-          }
-          setState(() => _currentIndex = i);
-        },
+  final auth = context.read<AuthProvider>();
+  if (i == 2) {
+    if (!auth.isLoggedIn) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+      return;
+    }
+    if (auth.token != null) {
+      context.read<BookmarkProvider>().fetchBookmarks(auth.token!);
+    }
+  }
+  setState(() => _currentIndex = i);
+},
         destinations: const [
           NavigationDestination(
             icon:  Icon(Icons.home_outlined),

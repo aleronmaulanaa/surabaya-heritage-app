@@ -87,8 +87,7 @@ class PlaceCard extends StatelessWidget {
                   // Alamat
                   Row(
                     children: [
-                      const Icon(Icons.location_on,
-                          size: 14, color: Colors.grey),
+                      const Icon(Icons.location_on, size: 14, color: Colors.red),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
