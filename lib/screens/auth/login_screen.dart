@@ -39,10 +39,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(title: const Text('Masuk')),
-      body: SingleChildScrollView(
+    return GestureDetector(
+  onTap: () => FocusScope.of(context).unfocus(),
+  child: Scaffold(
+    backgroundColor: Colors.white,
+    appBar: AppBar(title: const Text('Masuk')),
+    body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Form(
           key: _formKey,
@@ -183,6 +185,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 }

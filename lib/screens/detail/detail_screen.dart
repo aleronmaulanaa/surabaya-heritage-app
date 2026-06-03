@@ -23,9 +23,9 @@ class DetailScreen extends StatefulWidget {
 }
 
 class _DetailScreenState extends State<DetailScreen> {
-  final PageController  _pageController  = PageController();
+  final PageController _pageController = PageController();
   final ScrollController _scrollController = ScrollController();
-  int  _currentPage   = 0;
+  int _currentPage = 0;
   bool _showAppBarTitle = false;
 
   @override
@@ -59,10 +59,13 @@ class _DetailScreenState extends State<DetailScreen> {
   // Ganti method _getAllPhotos
   List<String> _getReviewPhotos(place) {
     final List<ReviewModel> reviews = List<ReviewModel>.from(place.reviews);
-    return reviews
-        .where((r) => r.photoUrl != null && r.photoUrl!.isNotEmpty)
-        .map((r) => r.photoUrl!)
-        .toList();
+    final List<String> photos = [];
+    for (final r in reviews) {
+      if (r.photoUrl != null && r.photoUrl!.isNotEmpty) photos.add(r.photoUrl!);
+      if (r.photoUrl2 != null && r.photoUrl2!.isNotEmpty)
+        photos.add(r.photoUrl2!);
+    }
+    return photos;
   }
 
   // Total slide = admin photos + review photos
@@ -118,23 +121,25 @@ class _DetailScreenState extends State<DetailScreen> {
           return CustomScrollView(
             controller: _scrollController,
             slivers: [
-             SliverAppBar(
-  expandedHeight: 280,
-  pinned: true,
-  title: AnimatedOpacity(
-    opacity:  _showAppBarTitle ? 1.0 : 0.0,
-    duration: const Duration(milliseconds: 250),
-    curve:    Curves.easeInOut,
-    child: Text(
-      place.name,
-      style: const TextStyle(
-        fontSize: 14, fontWeight: FontWeight.bold),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    ),
-  ),
-  flexibleSpace: FlexibleSpaceBar(
-    background: Builder(
+              SliverAppBar(
+                expandedHeight: 280,
+                pinned: true,
+                title: AnimatedOpacity(
+                  opacity: _showAppBarTitle ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeInOut,
+                  child: Text(
+                    place.name,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                flexibleSpace: FlexibleSpaceBar(
+                  background: Builder(
                     builder: (context) {
                       final adminPhotos = place.photos as List<String>;
                       final reviewPhotos = _getReviewPhotos(place);
@@ -379,42 +384,48 @@ class _DetailScreenState extends State<DetailScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Nama lokasi
-Text(
-  place.name,
-  style: const TextStyle(
-    fontSize:   22,
-    fontWeight: FontWeight.bold,
-    color:      Color(0xFF1E3A5F),
-  ),
-),
-const SizedBox(height: 8),
-// Row kategori & rating
-Row(
-  children: [
-    // BARU — warna sesuai kategori
-if (place.category != null)
-  Container(
-    padding: const EdgeInsets.symmetric(
-        horizontal: 12, vertical: 6),
-    decoration: BoxDecoration(
-      color: Color(
-        AppConstants.categoryColors[place.category!.name]
-            ?? 0xFF1E3A5F,
-      ).withOpacity(0.15),
-      borderRadius: BorderRadius.circular(20),
-    ),
-    child: Text(
-      place.category!.name,
-      style: TextStyle(
-        color: Color(
-          AppConstants.categoryColors[place.category!.name]
-              ?? 0xFF1E3A5F,
-        ),
-        fontWeight: FontWeight.w600,
-        fontSize:   12,
-      ),
-    ),
-  ),
+                      Text(
+                        place.name,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E3A5F),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Row kategori & rating
+                      Row(
+                        children: [
+                          // BARU — warna sesuai kategori
+                          if (place.category != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Color(
+                                  AppConstants.categoryColors[place
+                                          .category!
+                                          .name] ??
+                                      0xFF1E3A5F,
+                                ).withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                place.category!.name,
+                                style: TextStyle(
+                                  color: Color(
+                                    AppConstants.categoryColors[place
+                                            .category!
+                                            .name] ??
+                                        0xFF1E3A5F,
+                                  ),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
                           const Spacer(),
                           const Icon(Icons.star, color: Colors.amber, size: 18),
                           const SizedBox(width: 4),
@@ -770,29 +781,144 @@ if (place.category != null)
                   review.comment,
                   style: const TextStyle(fontSize: 14, height: 1.6),
                 ),
-              if (review.photoUrl != null && review.photoUrl!.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                const Text(
-                  'Foto',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                GestureDetector(
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openFullscreenPhoto(context, [review.photoUrl!], 0);
-                  },
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
+              Builder(
+                builder: (_) {
+                  final reviewPhotos = <String>[
+                    if (review.photoUrl != null && review.photoUrl!.isNotEmpty)
                       review.photoUrl!,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    if (review.photoUrl2 != null &&
+                        review.photoUrl2!.isNotEmpty)
+                      review.photoUrl2!,
+                  ];
+                  if (reviewPhotos.isEmpty) return const SizedBox.shrink();
+
+                  int currentPhotoPage = 0;
+
+                  return StatefulBuilder(
+                    builder: (_, setPhotoState) => Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Foto',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // 1 foto — tinggi menyesuaikan aspect ratio natural
+                        if (reviewPhotos.length == 1)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: GestureDetector(
+                              onTap: () => _openFullscreenPhoto(
+                                context,
+                                reviewPhotos,
+                                0,
+                              ),
+                              child: Image.network(
+                                reviewPhotos[0],
+                                fit: BoxFit.fitWidth,
+                                width: double.infinity,
+                                errorBuilder: (_, __, ___) =>
+                                    const SizedBox.shrink(),
+                              ),
+                            ),
+                          )
+                        // 2 foto — slideshow dengan tinggi tetap
+                        else
+                          Column(
+                            children: [
+                              GestureDetector(
+                                onTap: () => _openFullscreenPhoto(
+                                  context,
+                                  reviewPhotos,
+                                  currentPhotoPage,
+                                ),
+                                onHorizontalDragEnd: (details) {
+                                  if (details.primaryVelocity! < 0 &&
+                                      currentPhotoPage <
+                                          reviewPhotos.length - 1) {
+                                    setPhotoState(() => currentPhotoPage++);
+                                  } else if (details.primaryVelocity! > 0 &&
+                                      currentPhotoPage > 0) {
+                                    setPhotoState(() => currentPhotoPage--);
+                                  }
+                                },
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: AnimatedSize(
+                                    duration: const Duration(milliseconds: 350),
+                                    curve: Curves.easeInOut,
+                                    child: AnimatedSwitcher(
+                                      duration: const Duration(
+                                        milliseconds: 300,
+                                      ),
+                                      transitionBuilder: (child, animation) =>
+                                          FadeTransition(
+                                            opacity: animation,
+                                            child: child,
+                                          ),
+                                      child: Image.network(
+                                        reviewPhotos[currentPhotoPage],
+                                        key: ValueKey(currentPhotoPage),
+                                        fit: BoxFit.fitWidth,
+                                        width: double.infinity,
+                                        errorBuilder: (_, __, ___) =>
+                                            const SizedBox.shrink(),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  ...List.generate(
+                                    reviewPhotos.length,
+                                    (i) => AnimatedContainer(
+                                      duration: const Duration(
+                                        milliseconds: 200,
+                                      ),
+                                      margin: const EdgeInsets.symmetric(
+                                        horizontal: 3,
+                                      ),
+                                      width: currentPhotoPage == i ? 16 : 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: currentPhotoPage == i
+                                            ? const Color(0xFF1E3A5F)
+                                            : Colors.grey.shade300,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'Geser',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(
+                                    Icons.swipe,
+                                    size: 12,
+                                    color: Colors.grey,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                      ],
                     ),
-                  ),
-                ),
-              ],
+                  );
+                },
+              ),
             ],
           ),
         ),
@@ -817,7 +943,13 @@ if (place.category != null)
     int rating = review.rating;
     final commentCtrl = TextEditingController(text: review.comment);
     String? photoUrl = review.photoUrl;
+    String? photoUrl2 = review.photoUrl2;
     bool isUploading = false;
+
+    final originalRating = review.rating;
+    final originalComment = review.comment;
+    final originalPhotoUrl = review.photoUrl;
+    final originalPhotoUrl2 = review.photoUrl2;
 
     showModalBottomSheet(
       context: context,
@@ -826,236 +958,325 @@ if (place.category != null)
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => StatefulBuilder(
-        builder: (_, setModalState) => Padding(
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 24,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Edit Ulasan',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
+        // BENAR — GestureDetector di luar Padding
+        builder: (_, setModalState) => GestureDetector(
+          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 24,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
                       decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.orange.shade200),
-                      ),
-                      child: Text(
-                        'Sisa edit: ${2 - review.editCount}x',
-                        style: TextStyle(
-                          color: Colors.orange.shade700,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                // Rating bintang
-                Row(
-                  children: List.generate(
-                    5,
-                    (i) => IconButton(
-                      icon: Icon(
-                        i < rating ? Icons.star : Icons.star_outline,
-                        color: Colors.amber,
-                      ),
-                      onPressed: () => setModalState(() => rating = i + 1),
-                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                // Komentar
-                TextField(
-                  controller: commentCtrl,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    hintText: 'Tulis komentar kamu...',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Preview foto yang sudah ada
-                if (photoUrl != null && photoUrl!.isNotEmpty) ...[
-                  const Text(
-                    'Foto saat ini:',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                  ),
-                  const SizedBox(height: 8),
-                  Stack(
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          photoUrl!,
-                          height: 120,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      const Text(
+                        'Edit Ulasan',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      Positioned(
-                        top: 4,
-                        right: 4,
-                        child: GestureDetector(
-                          onTap: () => setModalState(() => photoUrl = null),
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              color: Colors.red,
-                              shape: BoxShape.circle,
-                            ),
-                            padding: const EdgeInsets.all(4),
-                            child: const Icon(
-                              Icons.close,
-                              size: 16,
-                              color: Colors.white,
-                            ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.orange.shade200),
+                        ),
+                        child: Text(
+                          'Sisa edit: ${2 - review.editCount}x',
+                          style: TextStyle(
+                            color: Colors.orange.shade700,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                ],
-                // Tombol ganti/tambah foto
-                Row(
-                  children: [
-                    Text(
-                      photoUrl != null && photoUrl!.isNotEmpty
-                          ? 'Ganti Foto:'
-                          : 'Tambah Foto:',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(width: 12),
-                    OutlinedButton.icon(
-                      icon: isUploading
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.photo_library, size: 16),
-                      label: const Text('Galeri'),
-                      onPressed: isUploading
-                          ? null
-                          : () async {
-                              setModalState(() => isUploading = true);
-                              final url = await _pickImageAndUpload(
-                                ImageSource.gallery,
-                                auth.token!,
-                              );
-                              setModalState(() => isUploading = false);
-                              if (url != null) {
-                                setModalState(() => photoUrl = url);
-                              }
-                            },
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.camera_alt, size: 16),
-                      label: const Text('Kamera'),
-                      onPressed: isUploading
-                          ? null
-                          : () async {
-                              setModalState(() => isUploading = true);
-                              final url = await _pickImageAndUpload(
-                                ImageSource.camera,
-                                auth.token!,
-                              );
-                              setModalState(() => isUploading = false);
-                              if (url != null) {
-                                setModalState(() => photoUrl = url);
-                              }
-                            },
-                    ),
-                  ],
-                ),
-                if (isUploading)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 8),
-                    child: Text(
-                      'Mengupload foto...',
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                  const SizedBox(height: 16),
+                  // Rating bintang
+                  Row(
+                    children: List.generate(
+                      5,
+                      (i) => IconButton(
+                        icon: Icon(
+                          i < rating ? Icons.star : Icons.star_outline,
+                          color: Colors.amber,
+                        ),
+                        onPressed: () => setModalState(() => rating = i + 1),
+                      ),
                     ),
                   ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1E3A5F),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
+                  const SizedBox(height: 8),
+                  // Komentar
+                  TextField(
+                    controller: commentCtrl,
+                    maxLines: 3,
+                    maxLength: 500,
+                    onChanged: (_) => setModalState(() {}),
+                    decoration: InputDecoration(
+                      hintText: 'Tulis komentar kamu...',
+                      helperText: 'Maks. 500 karakter',
+                      border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: () async {
-                      final result = await ApiService().editReview(
-                        reviewId: review.id,
-                        rating: rating,
-                        comment: commentCtrl.text.trim(),
-                        token: auth.token!,
-                        photoUrl: photoUrl,
-                      );
-                      if (result['success'] == true && context.mounted) {
-                        Navigator.pop(ctx);
-                        context.read<PlaceProvider>().fetchPlaceDetail(
-                          widget.placeId,
-                        );
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Ulasan berhasil diupdate!'),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                      } else if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              result['message'] ?? 'Gagal mengedit ulasan',
-                            ),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    },
-                    child: const Text('Simpan Perubahan'),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  if (photoUrl != null && photoUrl!.isNotEmpty) ...[
+                    const Text(
+                      'Foto 1 saat ini:',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            photoUrl!,
+                            height: 120,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                const SizedBox.shrink(),
+                          ),
+                        ),
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: GestureDetector(
+                            onTap: () => setModalState(() => photoUrl = null),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                              padding: const EdgeInsets.all(4),
+                              child: const Icon(
+                                Icons.close,
+                                size: 16,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  // Preview foto yang sudah ada
+                  if (photoUrl2 != null && photoUrl2!.isNotEmpty) ...[
+                    const Text(
+                      'Foto 2 saat ini:',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            photoUrl2!,
+                            height: 120,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                const SizedBox.shrink(),
+                          ),
+                        ),
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: GestureDetector(
+                            onTap: () => setModalState(() => photoUrl2 = null),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                              padding: const EdgeInsets.all(4),
+                              child: const Icon(
+                                Icons.close,
+                                size: 16,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  // Tombol ganti/tambah foto
+                  Row(
+                    children: [
+                      Text(
+                        photoUrl != null && photoUrl!.isNotEmpty
+                            ? 'Ganti Foto:'
+                            : 'Tambah Foto:',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton.icon(
+                        icon: isUploading
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.photo_library, size: 16),
+                        label: const Text('Galeri'),
+                        onPressed: isUploading
+                            ? null
+                            : () async {
+                                setModalState(() => isUploading = true);
+                                final url = await _pickImageAndUpload(
+                                  ImageSource.gallery,
+                                  auth.token!,
+                                );
+                                setModalState(() => isUploading = false);
+                                if (url != null) {
+                                  // Isi photoUrl dulu, jika sudah ada isi photoUrl2
+                                  if (photoUrl == null || photoUrl!.isEmpty) {
+                                    setModalState(() => photoUrl = url);
+                                  } else {
+                                    setModalState(() => photoUrl2 = url);
+                                  }
+                                }
+                              },
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.camera_alt, size: 16),
+                        label: const Text('Kamera'),
+                        onPressed: isUploading
+                            ? null
+                            : () async {
+                                setModalState(() => isUploading = true);
+                                final url = await _pickImageAndUpload(
+                                  ImageSource.camera,
+                                  auth.token!,
+                                );
+                                setModalState(() => isUploading = false);
+                                if (url != null) {
+                                  if (photoUrl == null || photoUrl!.isEmpty) {
+                                    setModalState(() => photoUrl = url);
+                                  } else {
+                                    setModalState(() => photoUrl2 = url);
+                                  }
+                                }
+                              },
+                      ),
+                    ],
+                  ),
+                  if (isUploading)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text(
+                        'Mengupload foto...',
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
+                    ),
+                  const SizedBox(height: 16),
+                  Builder(
+                    builder: (_) {
+                      final hasChanged =
+                          rating != originalRating ||
+                          commentCtrl.text.trim() != originalComment ||
+                          photoUrl != originalPhotoUrl ||
+                          photoUrl2 != originalPhotoUrl2;
+
+                      return SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: hasChanged
+                                ? const Color(0xFF1E3A5F)
+                                : Colors.grey.shade300,
+                            foregroundColor: hasChanged
+                                ? Colors.white
+                                : Colors.grey.shade500,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: hasChanged
+                              ? () async {
+                                  final result = await ApiService().editReview(
+                                    reviewId: review.id,
+                                    rating: rating,
+                                    comment: commentCtrl.text.trim(),
+                                    token: auth.token!,
+                                    photoUrl: photoUrl,
+                                    photoUrl2: photoUrl2,
+                                  );
+                                  if (result['success'] == true &&
+                                      context.mounted) {
+                                    Navigator.pop(ctx);
+                                    context
+                                        .read<PlaceProvider>()
+                                        .fetchPlaceDetail(widget.placeId);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Ulasan berhasil diupdate!',
+                                        ),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  } else if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          result['message'] ??
+                                              'Gagal mengedit ulasan',
+                                        ),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                }
+                              : null, // ← null = tombol tidak bisa ditekan
+                          child: const Text('Simpan Perubahan'),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1123,209 +1344,221 @@ if (place.category != null)
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => StatefulBuilder(
-        builder: (_, setModalState) => Padding(
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 24,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const Text(
-                  'Tulis Ulasan',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: List.generate(
-                    5,
-                    (i) => IconButton(
-                      icon: Icon(
-                        i < rating ? Icons.star : Icons.star_outline,
-                        color: Colors.amber,
+        // BENAR — GestureDetector di luar Padding
+        builder: (_, setModalState) => GestureDetector(
+          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 24,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                      onPressed: () => setModalState(() => rating = i + 1),
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: commentCtrl,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    hintText: 'Tulis komentar kamu...',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  const Text(
+                    'Tulis Ulasan',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: List.generate(
+                      5,
+                      (i) => IconButton(
+                        icon: Icon(
+                          i < rating ? Icons.star : Icons.star_outline,
+                          color: Colors.amber,
+                        ),
+                        onPressed: () => setModalState(() => rating = i + 1),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    const Text(
-                      'Tambah Foto:',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(width: 12),
-                    OutlinedButton.icon(
-                      icon: isUploading
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.photo_library, size: 16),
-                      label: const Text('Galeri'),
-                      onPressed: isUploading
-                          ? null
-                          : () async {
-                              setModalState(() => isUploading = true);
-                              final url = await _pickImageAndUpload(
-                                ImageSource.gallery,
-                                auth.token!,
-                              );
-                              setModalState(() => isUploading = false);
-                              if (url != null) {
-                                setModalState(() => photoUrls.add(url));
-                              }
-                            },
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.camera_alt, size: 16),
-                      label: const Text('Kamera'),
-                      onPressed: isUploading
-                          ? null
-                          : () async {
-                              setModalState(() => isUploading = true);
-                              final url = await _pickImageAndUpload(
-                                ImageSource.camera,
-                                auth.token!,
-                              );
-                              setModalState(() => isUploading = false);
-                              if (url != null) {
-                                setModalState(() => photoUrls.add(url));
-                              }
-                            },
-                    ),
-                  ],
-                ),
-                if (isUploading)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 8),
-                    child: Text(
-                      'Mengupload foto...',
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                  ),
-                if (photoUrls.isNotEmpty) ...[
                   const SizedBox(height: 8),
-                  SizedBox(
-                    height: 90,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: photoUrls.length,
-                      itemBuilder: (_, i) => Stack(
-                        children: [
-                          Container(
-                            margin: const EdgeInsets.only(right: 8),
-                            width: 80,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.network(
-                                photoUrls[i],
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            top: 0,
-                            right: 8,
-                            child: GestureDetector(
-                              onTap: () =>
-                                  setModalState(() => photoUrls.removeAt(i)),
-                              child: Container(
-                                decoration: const BoxDecoration(
-                                  color: Colors.red,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.close,
-                                  size: 16,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1E3A5F),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
+                  TextField(
+                    controller: commentCtrl,
+                    maxLines: 3,
+                    maxLength: 500,
+                    decoration: InputDecoration(
+                      hintText: 'Tulis komentar kamu...',
+                      helperText: 'Maks. 500 karakter',
+                      border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: () async {
-                      final firstPhoto = photoUrls.isNotEmpty
-                          ? photoUrls.first
-                          : null;
-                      final result = await ApiService().addReview(
-                        placeId: widget.placeId,
-                        rating: rating,
-                        comment: commentCtrl.text.trim(),
-                        token: auth.token!,
-                        photoUrl: firstPhoto,
-                      );
-                      if (result['success'] == true && context.mounted) {
-                        Navigator.pop(ctx);
-                        context.read<PlaceProvider>().fetchPlaceDetail(
-                          widget.placeId,
-                        );
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Ulasan berhasil ditambahkan!'),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                      } else if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              result['message'] ?? 'Gagal mengirim ulasan',
-                            ),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    },
-                    child: const Text('Kirim Ulasan'),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Text(
+                        'Tambah Foto:',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton.icon(
+                        icon: isUploading
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.photo_library, size: 16),
+                        label: const Text('Galeri'),
+                        onPressed: isUploading || photoUrls.length >= 2
+                            ? null
+                            : () async {
+                                setModalState(() => isUploading = true);
+                                final url = await _pickImageAndUpload(
+                                  ImageSource.gallery,
+                                  auth.token!,
+                                );
+                                setModalState(() => isUploading = false);
+                                if (url != null) {
+                                  setModalState(() => photoUrls.add(url));
+                                }
+                              },
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.camera_alt, size: 16),
+                        label: const Text('Kamera'),
+                        onPressed: isUploading || photoUrls.length >= 2
+                            ? null
+                            : () async {
+                                setModalState(() => isUploading = true);
+                                final url = await _pickImageAndUpload(
+                                  ImageSource.camera,
+                                  auth.token!,
+                                );
+                                setModalState(() => isUploading = false);
+                                if (url != null) {
+                                  setModalState(() => photoUrls.add(url));
+                                }
+                              },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4), // ← TAMBAHKAN DI SINI
+                  const Text(
+                    'Maks. 2 foto',
+                    style: TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                  if (isUploading)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text(
+                        'Mengupload foto...',
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
+                    ),
+                  if (photoUrls.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 90,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: photoUrls.length,
+                        itemBuilder: (_, i) => Stack(
+                          children: [
+                            Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              width: 80,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.network(
+                                  photoUrls[i],
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              top: 0,
+                              right: 8,
+                              child: GestureDetector(
+                                onTap: () =>
+                                    setModalState(() => photoUrls.removeAt(i)),
+                                child: Container(
+                                  decoration: const BoxDecoration(
+                                    color: Colors.red,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.close,
+                                    size: 16,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1E3A5F),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () async {
+                        final result = await ApiService().addReview(
+                          placeId: widget.placeId,
+                          rating: rating,
+                          comment: commentCtrl.text.trim(),
+                          token: auth.token!,
+                          photoUrl: photoUrls.isNotEmpty ? photoUrls[0] : null,
+                          photoUrl2: photoUrls.length > 1 ? photoUrls[1] : null,
+                        );
+                        if (result['success'] == true && context.mounted) {
+                          Navigator.pop(ctx);
+                          context.read<PlaceProvider>().fetchPlaceDetail(
+                            widget.placeId,
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Ulasan berhasil ditambahkan!'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        } else if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                result['message'] ?? 'Gagal mengirim ulasan',
+                              ),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      },
+                      child: const Text('Kirim Ulasan'),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1655,15 +1888,36 @@ class _ReviewList extends StatelessWidget {
                 ],
                 if (r.photoUrl != null && r.photoUrl!.isNotEmpty) ...[
                   const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      r.photoUrl!,
-                      height: 100,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            r.photoUrl!,
+                            height: 100,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                const SizedBox.shrink(),
+                          ),
+                        ),
+                      ),
+                      if (r.photoUrl2 != null && r.photoUrl2!.isNotEmpty) ...[
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              r.photoUrl2!,
+                              height: 100,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  const SizedBox.shrink(),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
                 const SizedBox(height: 4),

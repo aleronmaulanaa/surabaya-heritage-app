@@ -108,6 +108,7 @@ class ApiService {
   required String comment,
   required String token,
   String?         photoUrl,
+  String?         photoUrl2,
 }) async {
   try {
     final Map<String, dynamic> body = {
@@ -115,9 +116,8 @@ class ApiService {
       'rating':   rating,
       'comment':  comment,
     };
-    if (photoUrl != null && photoUrl.isNotEmpty) {
-      body['photo_url'] = photoUrl;
-    }
+    if (photoUrl  != null && photoUrl.isNotEmpty)  body['photo_url']   = photoUrl;
+    if (photoUrl2 != null && photoUrl2.isNotEmpty) body['photo_url_2'] = photoUrl2;  // ← tambah
 
     final response = await http.post(
       Uri.parse('$_baseUrl/reviews'),
@@ -144,13 +144,15 @@ class ApiService {
   required String comment,
   required String token,
   String?         photoUrl,
+  String?         photoUrl2,
 }) async {
   try {
     final Map<String, dynamic> body = {
       'rating':  rating,
       'comment': comment,
+      'photo_url':   photoUrl,
+      'photo_url_2': photoUrl2,
     };
-    if (photoUrl != null) body['photo_url'] = photoUrl;
 
     final response = await http.put(
       Uri.parse('$_baseUrl/reviews/$reviewId'),

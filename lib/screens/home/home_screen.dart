@@ -20,11 +20,13 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _searchCtrl = TextEditingController();
+  final _homeFocusScope = FocusScopeNode();
   int _currentIndex = 0;
 
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _homeFocusScope.dispose();
     super.dispose();
   }
 
@@ -34,43 +36,44 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: const Color(0xFFF5F5F5),
       body: IndexedStack(
         index: _currentIndex,
-        children: const [
-          _HomeTab(),
-          MapScreen(),
-          BookmarkScreen(),
+        children: [
+          FocusScope(node: _homeFocusScope, child: const _HomeTab()),
+          const MapScreen(),
+          const BookmarkScreen(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (i) {
-  final auth = context.read<AuthProvider>();
-  if (i == 2) {
-    if (!auth.isLoggedIn) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
-      return;
-    }
-    if (auth.token != null) {
-      context.read<BookmarkProvider>().fetchBookmarks(auth.token!);
-    }
-  }
-  setState(() => _currentIndex = i);
-},
+          _homeFocusScope.unfocus();
+          final auth = context.read<AuthProvider>();
+          if (i == 2) {
+            if (!auth.isLoggedIn) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+              return;
+            }
+            if (auth.token != null) {
+              context.read<BookmarkProvider>().fetchBookmarks(auth.token!);
+            }
+          }
+          setState(() => _currentIndex = i);
+        },
         destinations: const [
           NavigationDestination(
-            icon:  Icon(Icons.home_outlined),
+            icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
             label: 'Beranda',
           ),
           NavigationDestination(
-            icon:  Icon(Icons.map_outlined),
+            icon: Icon(Icons.map_outlined),
             selectedIcon: Icon(Icons.map),
             label: 'Peta',
           ),
           NavigationDestination(
-            icon:  Icon(Icons.bookmark_outline),
+            icon: Icon(Icons.bookmark_outline),
             selectedIcon: Icon(Icons.bookmark),
             label: 'Tersimpan',
           ),
@@ -85,77 +88,80 @@ class _HomeTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Column(
-        children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            color:   const Color(0xFF1E3A5F),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Surabaya Heritage',
-                          style: TextStyle(
-                            color:      Colors.white,
-                            fontSize:   22,
-                            fontWeight: FontWeight.bold,
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: SafeArea(
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              color: const Color(0xFF1E3A5F),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Surabaya Heritage',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                        Text(
-                          'Jelajahi tempat bersejarah',
-                          style: TextStyle(
-                            color:   Colors.white70,
-                            fontSize: 13,
+                          Text(
+                            'Jelajahi tempat bersejarah',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    // Tombol login/profile
-                    Consumer<AuthProvider>(
-                      builder: (_, auth, __) => IconButton(
-                        icon: Icon(
-                          auth.isLoggedIn
-                              ? Icons.account_circle
-                              : Icons.login,
-                          color: Colors.white,
-                          size:  28,
-                        ),
-                        onPressed: () {
-                          if (auth.isLoggedIn) {
-                            _showProfileMenu(context, auth);
-                          } else {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const LoginScreen(),
-                              ),
-                            );
-                          }
-                        },
+                        ],
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                // Search bar
-                _SearchBar(),
-                const SizedBox(height: 12),
-              ],
+                      // Tombol login/profile
+                      Consumer<AuthProvider>(
+                        builder: (_, auth, __) => IconButton(
+                          icon: Icon(
+                            auth.isLoggedIn
+                                ? Icons.account_circle
+                                : Icons.login,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                          onPressed: () {
+                            if (auth.isLoggedIn) {
+                              _showProfileMenu(context, auth);
+                            } else {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const LoginScreen(),
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Search bar
+                  const _SearchBar(),
+                  const SizedBox(height: 12),
+                ],
+              ),
             ),
-          ),
-          // Filter kategori
-          const _CategoryFilter(),
-          // Daftar tempat
-          const Expanded(child: _PlaceList()),
-        ],
+            // Filter kategori
+            const _CategoryFilter(),
+            // Daftar tempat
+            const Expanded(child: _PlaceList()),
+          ],
+        ),
       ),
     );
   }
@@ -171,25 +177,29 @@ class _HomeTab extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.account_circle, size: 60,
-                color: Color(0xFF1E3A5F)),
+            const Icon(
+              Icons.account_circle,
+              size: 60,
+              color: Color(0xFF1E3A5F),
+            ),
             const SizedBox(height: 8),
             Text(
               auth.user?.name ?? '',
-              style: const TextStyle(
-                fontSize:   18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            Text(auth.user?.email ?? '',
-                style: const TextStyle(color: Colors.grey)),
+            Text(
+              auth.user?.email ?? '',
+              style: const TextStyle(color: Colors.grey),
+            ),
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                icon:  const Icon(Icons.logout, color: Colors.red),
-                label: const Text('Keluar',
-                    style: TextStyle(color: Colors.red)),
+                icon: const Icon(Icons.logout, color: Colors.red),
+                label: const Text(
+                  'Keluar',
+                  style: TextStyle(color: Colors.red),
+                ),
                 onPressed: () {
                   auth.logout();
                   Navigator.pop(context);
@@ -203,35 +213,61 @@ class _HomeTab extends StatelessWidget {
   }
 }
 
-class _SearchBar extends StatelessWidget {
-  final _ctrl = TextEditingController();
+class _SearchBar extends StatefulWidget {
+  const _SearchBar();
 
-  _SearchBar();
+  @override
+  State<_SearchBar> createState() => _SearchBarState();
+}
+
+class _SearchBarState extends State<_SearchBar> {
+  final _ctrl = TextEditingController();
+  final _focusNode = FocusNode();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return TextField(
       controller: _ctrl,
-      onChanged: (val) =>
-          context.read<PlaceProvider>().searchPlaces(val),
+      focusNode: _focusNode,
+      autofocus: false,
+      onChanged: (val) {
+        context.read<PlaceProvider>().searchPlaces(val);
+        setState(() {});
+      },
       decoration: InputDecoration(
-        hintText:    'Cari tempat bersejarah...',
-        hintStyle:   const TextStyle(color: Colors.grey),
-        prefixIcon:  const Icon(Icons.search, color: Colors.grey),
+        hintText: 'Cari tempat bersejarah...',
+        hintStyle: const TextStyle(color: Colors.grey),
+        prefixIcon: const Icon(Icons.search, color: Colors.grey),
         suffixIcon: _ctrl.text.isNotEmpty
-            ? IconButton(
-                icon: const Icon(Icons.clear, color: Colors.grey),
-                onPressed: () {
+            ? GestureDetector(
+                onTap: () {
                   _ctrl.clear();
                   context.read<PlaceProvider>().searchPlaces('');
+                  setState(() {});
+                  FocusScope.of(context).unfocus();
                 },
+                child: Container(
+                  margin: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(
+                    color: Colors.grey,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close, size: 16, color: Colors.white),
+                ),
               )
             : null,
-        filled:      true,
-        fillColor:   Colors.white,
+        filled: true,
+        fillColor: Colors.white,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide:   BorderSide.none,
+          borderSide: BorderSide.none,
         ),
         contentPadding: const EdgeInsets.symmetric(vertical: 12),
       ),
@@ -248,7 +284,7 @@ class _CategoryFilter extends StatelessWidget {
       builder: (_, provider, __) {
         if (provider.categories.isEmpty) return const SizedBox.shrink();
         return Container(
-          color:  Colors.white,
+          color: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -260,16 +296,20 @@ class _CategoryFilter extends StatelessWidget {
                   onTap: () => provider.filterByCategory(null),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    margin:   const EdgeInsets.only(right: 8),
-                    padding:  const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
+                    margin: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: provider.selectedCategoryId == null
                           ? const Color(0xFF1E3A5F)
                           : Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                          color: const Color(0xFF1E3A5F), width: 1.5),
+                        color: const Color(0xFF1E3A5F),
+                        width: 1.5,
+                      ),
                     ),
                     child: Text(
                       'Semua',
@@ -278,7 +318,7 @@ class _CategoryFilter extends StatelessWidget {
                             ? Colors.white
                             : const Color(0xFF1E3A5F),
                         fontWeight: FontWeight.w600,
-                        fontSize:   13,
+                        fontSize: 13,
                       ),
                     ),
                   ),
@@ -286,9 +326,8 @@ class _CategoryFilter extends StatelessWidget {
                 // Chip per kategori
                 ...provider.categories.map(
                   (cat) => CategoryChip(
-                    category:   cat,
-                    isSelected:
-                        provider.selectedCategoryId == cat.id,
+                    category: cat,
+                    isSelected: provider.selectedCategoryId == cat.id,
                     onTap: () => provider.filterByCategory(cat.id),
                   ),
                 ),
@@ -315,11 +354,12 @@ class _PlaceList extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.error_outline,
-                    size: 60, color: Colors.grey),
+                const Icon(Icons.error_outline, size: 60, color: Colors.grey),
                 const SizedBox(height: 16),
-                Text(provider.errorMessage!,
-                    style: const TextStyle(color: Colors.grey)),
+                Text(
+                  provider.errorMessage!,
+                  style: const TextStyle(color: Colors.grey),
+                ),
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: () => provider.fetchPlaces(),
@@ -337,8 +377,10 @@ class _PlaceList extends StatelessWidget {
               children: [
                 Icon(Icons.search_off, size: 60, color: Colors.grey),
                 SizedBox(height: 16),
-                Text('Tidak ada tempat ditemukan',
-                    style: TextStyle(color: Colors.grey)),
+                Text(
+                  'Tidak ada tempat ditemukan',
+                  style: TextStyle(color: Colors.grey),
+                ),
               ],
             ),
           );
@@ -347,16 +389,14 @@ class _PlaceList extends StatelessWidget {
         return RefreshIndicator(
           onRefresh: () => provider.fetchPlaces(),
           child: ListView.builder(
-            padding:     const EdgeInsets.symmetric(vertical: 8),
-            itemCount:   provider.places.length,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: provider.places.length,
             itemBuilder: (_, i) => PlaceCard(
               place: provider.places[i],
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => DetailScreen(
-                    placeId: provider.places[i].id,
-                  ),
+                  builder: (_) => DetailScreen(placeId: provider.places[i].id),
                 ),
               ),
             ),
