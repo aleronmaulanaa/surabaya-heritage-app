@@ -19,14 +19,16 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final _searchCtrl = TextEditingController();
-  final _homeFocusScope = FocusScopeNode();
-  int _currentIndex = 0;
+  final _searchCtrl      = TextEditingController();
+  final _homeFocusScope  = FocusScopeNode();
+  final _homeScrollCtrl  = ScrollController();
+  int _currentIndex      = 0;
 
   @override
   void dispose() {
     _searchCtrl.dispose();
     _homeFocusScope.dispose();
+    _homeScrollCtrl.dispose();
     super.dispose();
   }
 
@@ -37,7 +39,10 @@ class _HomeScreenState extends State<HomeScreen> {
       body: IndexedStack(
         index: _currentIndex,
         children: [
-          FocusScope(node: _homeFocusScope, child: const _HomeTab()),
+          FocusScope(
+            node: _homeFocusScope,
+            child: _HomeTab(scrollController: _homeScrollCtrl),
+          ),
           const MapScreen(),
           const BookmarkScreen(),
         ],
@@ -84,7 +89,8 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _HomeTab extends StatelessWidget {
-  const _HomeTab();
+  final ScrollController scrollController;
+  const _HomeTab({required this.scrollController});
 
   @override
   Widget build(BuildContext context) {
@@ -123,7 +129,6 @@ class _HomeTab extends StatelessWidget {
                           ),
                         ],
                       ),
-                      // Tombol login/profile
                       Consumer<AuthProvider>(
                         builder: (_, auth, __) => IconButton(
                           icon: Icon(
@@ -150,16 +155,13 @@ class _HomeTab extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  // Search bar
                   const _SearchBar(),
                   const SizedBox(height: 12),
                 ],
               ),
             ),
-            // Filter kategori
             const _CategoryFilter(),
-            // Daftar tempat
-            const Expanded(child: _PlaceList()),
+            Expanded(child: _PlaceList(scrollController: scrollController)),
           ],
         ),
       ),
@@ -177,11 +179,7 @@ class _HomeTab extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.account_circle,
-              size: 60,
-              color: Color(0xFF1E3A5F),
-            ),
+            const Icon(Icons.account_circle, size: 60, color: Color(0xFF1E3A5F)),
             const SizedBox(height: 8),
             Text(
               auth.user?.name ?? '',
@@ -196,10 +194,7 @@ class _HomeTab extends StatelessWidget {
               width: double.infinity,
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.logout, color: Colors.red),
-                label: const Text(
-                  'Keluar',
-                  style: TextStyle(color: Colors.red),
-                ),
+                label: const Text('Keluar', style: TextStyle(color: Colors.red)),
                 onPressed: () {
                   auth.logout();
                   Navigator.pop(context);
@@ -221,7 +216,7 @@ class _SearchBar extends StatefulWidget {
 }
 
 class _SearchBarState extends State<_SearchBar> {
-  final _ctrl = TextEditingController();
+  final _ctrl      = TextEditingController();
   final _focusNode = FocusNode();
 
   @override
@@ -291,7 +286,6 @@ class _CategoryFilter extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                // Chip "Semua"
                 GestureDetector(
                   onTap: () => provider.filterByCategory(null),
                   child: AnimatedContainer(
@@ -323,7 +317,6 @@ class _CategoryFilter extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Chip per kategori
                 ...provider.categories.map(
                   (cat) => CategoryChip(
                     category: cat,
@@ -341,7 +334,8 @@ class _CategoryFilter extends StatelessWidget {
 }
 
 class _PlaceList extends StatelessWidget {
-  const _PlaceList();
+  final ScrollController scrollController;
+  const _PlaceList({required this.scrollController});
 
   @override
   Widget build(BuildContext context) {
@@ -389,6 +383,7 @@ class _PlaceList extends StatelessWidget {
         return RefreshIndicator(
           onRefresh: () => provider.fetchPlaces(),
           child: ListView.builder(
+            controller: scrollController,
             padding: const EdgeInsets.symmetric(vertical: 8),
             itemCount: provider.places.length,
             itemBuilder: (_, i) => PlaceCard(
@@ -396,7 +391,8 @@ class _PlaceList extends StatelessWidget {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => DetailScreen(placeId: provider.places[i].id),
+                  builder: (_) =>
+                      DetailScreen(placeId: provider.places[i].id),
                 ),
               ),
             ),

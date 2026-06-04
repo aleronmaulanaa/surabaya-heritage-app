@@ -6,25 +6,26 @@ import '../services/api_service.dart';
 class PlaceProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
 
-  List<PlaceModel>    _places         = [];
-  List<PlaceModel>    _filteredPlaces = [];
-  List<CategoryModel> _categories     = [];
+  List<PlaceModel>    _places            = [];
+  List<PlaceModel>    _filteredPlaces    = [];
+  List<CategoryModel> _categories        = [];
   PlaceModel?         _selectedPlace;
-  bool                _isLoading      = false;
+  bool                _isLoading         = false; // untuk list
+  bool                _isDetailLoading   = false; // untuk detail
   String?             _errorMessage;
   int?                _selectedCategoryId;
-  String              _searchQuery    = '';
+  String              _searchQuery       = '';
 
-  List<PlaceModel>    get places            => _filteredPlaces;
-  List<PlaceModel>    get allPlaces         => _places;
-  List<CategoryModel> get categories        => _categories;
-  PlaceModel?         get selectedPlace     => _selectedPlace;
-  bool                get isLoading         => _isLoading;
-  String?             get errorMessage      => _errorMessage;
+  List<PlaceModel>    get places             => _filteredPlaces;
+  List<PlaceModel>    get allPlaces          => _places;
+  List<CategoryModel> get categories         => _categories;
+  PlaceModel?         get selectedPlace      => _selectedPlace;
+  bool                get isLoading          => _isLoading;
+  bool                get isDetailLoading    => _isDetailLoading;
+  String?             get errorMessage       => _errorMessage;
   int?                get selectedCategoryId => _selectedCategoryId;
-  String              get searchQuery       => _searchQuery;
+  String              get searchQuery        => _searchQuery;
 
-  // Ambil semua tempat
   Future<void> fetchPlaces() async {
     _isLoading    = true;
     _errorMessage = null;
@@ -41,7 +42,6 @@ class PlaceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Ambil semua kategori
   Future<void> fetchCategories() async {
     try {
       _categories = await _apiService.getCategories();
@@ -51,9 +51,9 @@ class PlaceProvider extends ChangeNotifier {
     }
   }
 
-  // Ambil detail tempat
+  // Gunakan _isDetailLoading — tidak ganggu list di home
   Future<void> fetchPlaceDetail(int id) async {
-    _isLoading = true;
+    _isDetailLoading = true;
     notifyListeners();
 
     try {
@@ -62,25 +62,22 @@ class PlaceProvider extends ChangeNotifier {
       _errorMessage = 'Gagal memuat detail tempat';
     }
 
-    _isLoading = false;
+    _isDetailLoading = false;
     notifyListeners();
   }
 
-  // Filter berdasarkan kategori
   void filterByCategory(int? categoryId) {
     _selectedCategoryId = categoryId;
     _applyFilter();
     notifyListeners();
   }
 
-  // Filter berdasarkan pencarian
   void searchPlaces(String query) {
     _searchQuery = query;
     _applyFilter();
     notifyListeners();
   }
 
-  // Terapkan filter
   void _applyFilter() {
     _filteredPlaces = _places.where((place) {
       final matchCategory = _selectedCategoryId == null ||
@@ -92,7 +89,6 @@ class PlaceProvider extends ChangeNotifier {
     }).toList();
   }
 
-  // Reset filter
   void resetFilter() {
     _selectedCategoryId = null;
     _searchQuery        = '';

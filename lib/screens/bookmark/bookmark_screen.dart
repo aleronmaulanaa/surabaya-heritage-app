@@ -14,20 +14,21 @@ class BookmarkScreen extends StatefulWidget {
   State<BookmarkScreen> createState() => _BookmarkScreenState();
 }
 
-class _BookmarkScreenState extends State<BookmarkScreen> {
+class _BookmarkScreenState extends State<BookmarkScreen>
+    with AutomaticKeepAliveClientMixin {
+  final ScrollController _scrollController = ScrollController();
+
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final auth = context.read<AuthProvider>();
-      if (auth.isLoggedIn && auth.token != null) {
-        context.read<BookmarkProvider>().fetchBookmarks(auth.token!);
-      }
-    });
+  bool get wantKeepAlive => true;
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Scaffold(
       appBar: AppBar(
         title:                    const Text('Tersimpan'),
@@ -138,7 +139,8 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
                 onRefresh: () =>
                     bookmark.fetchBookmarks(auth.token!),
                 child: ListView.builder(
-                  padding:     const EdgeInsets.symmetric(vertical: 8),
+    controller: _scrollController,
+    padding:     const EdgeInsets.symmetric(vertical: 8),
                   itemCount:   bookmark.bookmarks.length,
                   itemBuilder: (_, i) => PlaceCard(
                     place: bookmark.bookmarks[i],

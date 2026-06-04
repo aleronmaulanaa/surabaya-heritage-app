@@ -107,9 +107,9 @@ class _DetailScreenState extends State<DetailScreen> {
       backgroundColor: const Color(0xFFF5F5F5),
       body: Consumer<PlaceProvider>(
         builder: (_, provider, __) {
-          if (provider.isLoading) {
-            return const Scaffold(body: LoadingWidget());
-          }
+          if (provider.isDetailLoading) {
+  return const Scaffold(body: LoadingWidget());
+}
 
           final place = provider.selectedPlace;
           if (place == null) {

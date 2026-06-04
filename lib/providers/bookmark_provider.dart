@@ -5,27 +5,38 @@ import '../services/api_service.dart';
 class BookmarkProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
 
-  List<PlaceModel> _bookmarks    = [];
-  List<Map<String, dynamic>> _rawBookmarks = [];
-  bool             _isLoading    = false;
-  String?          _errorMessage;
+  List<PlaceModel>             _bookmarks    = [];
+  List<Map<String, dynamic>>   _rawBookmarks = [];
+  bool                         _isLoading    = false;
+  String?                      _errorMessage;
 
   List<PlaceModel> get bookmarks    => _bookmarks;
   bool             get isLoading    => _isLoading;
   String?          get errorMessage => _errorMessage;
 
-  // Ambil daftar bookmark
   Future<void> fetchBookmarks(String token) async {
-    _isLoading    = true;
+    // Hanya tampilkan loading jika belum ada data sama sekali
+    if (_bookmarks.isEmpty) {
+      _isLoading = true;
+      notifyListeners();
+    }
     _errorMessage = null;
-    notifyListeners();
 
     try {
       _rawBookmarks = await _apiService.getBookmarksRaw(token);
-      _bookmarks    = _rawBookmarks
-          .where((e) => e['places'] != null)
-          .map((e) => PlaceModel.fromJson(e['places']))
-          .toList();
+
+      final List<PlaceModel> parsed = [];
+      for (final e in _rawBookmarks) {
+        try {
+          if (e['places'] != null) {
+            parsed.add(PlaceModel.fromJson(e['places']));
+          }
+        } catch (parseErr) {
+          debugPrint('[BM] PARSE ERROR: $parseErr');
+        }
+      }
+      _bookmarks = parsed;
+
     } catch (e) {
       _errorMessage = 'Gagal memuat bookmark';
     }
@@ -34,21 +45,18 @@ class BookmarkProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Tambah bookmark
   Future<bool> addBookmark(int placeId, String token) async {
     final success = await _apiService.addBookmark(placeId, token);
     if (success) await fetchBookmarks(token);
     return success;
   }
 
-  // Hapus bookmark
   Future<bool> removeBookmark(int bookmarkId, String token) async {
     final success = await _apiService.removeBookmark(bookmarkId, token);
     if (success) await fetchBookmarks(token);
     return success;
   }
 
-  // Cek apakah tempat sudah dibookmark
   bool isBookmarked(int placeId) {
     return _bookmarks.any((p) => p.id == placeId);
   }
