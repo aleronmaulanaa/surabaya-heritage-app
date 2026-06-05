@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/place_model.dart';
 import '../models/category_model.dart';
 import '../services/api_service.dart';
+import 'package:geolocator/geolocator.dart';
 
 class PlaceProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
@@ -14,7 +15,9 @@ class PlaceProvider extends ChangeNotifier {
   bool                _isDetailLoading   = false; // untuk detail
   String?             _errorMessage;
   int?                _selectedCategoryId;
-  String              _searchQuery       = '';
+  String              _searchQuery    = '';
+  double?             _userLat;
+  double?             _userLng;
 
   List<PlaceModel>    get places             => _filteredPlaces;
   List<PlaceModel>    get allPlaces          => _places;
@@ -25,6 +28,8 @@ class PlaceProvider extends ChangeNotifier {
   String?             get errorMessage       => _errorMessage;
   int?                get selectedCategoryId => _selectedCategoryId;
   String              get searchQuery        => _searchQuery;
+  double?             get userLat            => _userLat;
+  double?             get userLng            => _userLng;
 
   Future<void> fetchPlaces() async {
     _isLoading    = true;
@@ -94,5 +99,28 @@ class PlaceProvider extends ChangeNotifier {
     _searchQuery        = '';
     _filteredPlaces     = _places;
     notifyListeners();
+  }
+  // Simpan posisi user & hitung jarak ke semua tempat
+  void setUserLocation(double lat, double lng) {
+    _userLat = lat;
+    _userLng = lng;
+    _calculateDistances();
+    notifyListeners();
+  }
+
+  void _calculateDistances() {
+    if (_userLat == null || _userLng == null) return;
+    for (final p in _places) {
+      p.distance = Geolocator.distanceBetween(
+        _userLat!, _userLng!, p.lat, p.lng,
+      );
+    }
+    _applyFilter();
+  }
+
+  // Hitung jarak ke satu tempat (untuk card & detail)
+  double? distanceTo(double lat, double lng) {
+    if (_userLat == null || _userLng == null) return null;
+    return Geolocator.distanceBetween(_userLat!, _userLng!, lat, lng);
   }
 }

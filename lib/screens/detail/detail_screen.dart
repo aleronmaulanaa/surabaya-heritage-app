@@ -441,6 +441,24 @@ class _DetailScreenState extends State<DetailScreen> {
                         text: place.address,
                         color: Colors.red,
                       ),
+                      Consumer<PlaceProvider>(
+                        builder: (_, pp, __) {
+                          final dist = pp.distanceTo(place.lat, place.lng);
+                          if (dist == null) return const SizedBox.shrink();
+                          return Column(
+                            children: [
+                              const SizedBox(height: 8),
+                              _InfoRow(
+                                icon: Icons.directions_walk,
+                                text: dist < 1000
+                                    ? '${dist.toStringAsFixed(0)} m dari lokasi kamu'
+                                    : '${(dist / 1000).toStringAsFixed(1)} km dari lokasi kamu',
+                                color: Colors.blue,
+                              ),
+                            ],
+                          );
+                        },
+                      ),
                       if (place.phone.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         _InfoRow(

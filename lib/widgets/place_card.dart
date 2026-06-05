@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/place_model.dart';
 import '../providers/bookmark_provider.dart';
+import '../providers/place_provider.dart';
 import '../utils/constants.dart';
 import '../providers/auth_provider.dart';
 
@@ -194,26 +195,28 @@ class PlaceCard extends StatelessWidget {
                         ),
                       ),
                       const Spacer(),
-                      if (place.distance != null)
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.directions_walk,
-                              size: 14,
-                              color: Colors.grey,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              place.distance! < 1000
-                                  ? '${place.distance!.toStringAsFixed(0)} m'
-                                  : '${(place.distance! / 1000).toStringAsFixed(1)} km',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
+                      Consumer<PlaceProvider>(
+                        builder: (_, pp, __) {
+                          final dist = pp.distanceTo(place.lat, place.lng);
+                          if (dist == null) return const SizedBox.shrink();
+                          return Row(
+                            children: [
+                              const Icon(Icons.directions_walk,
+                                  size: 14, color: Colors.grey),
+                              const SizedBox(width: 4),
+                              Text(
+                                dist < 1000
+                                    ? '${dist.toStringAsFixed(0)} m'
+                                    : '${(dist / 1000).toStringAsFixed(1)} km',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
+                            ],
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ],

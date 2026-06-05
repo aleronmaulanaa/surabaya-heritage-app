@@ -70,5 +70,7 @@
 <string>Aplikasi membutuhkan akses kamera untuk mengambil foto ulasan</string>
 <key>NSPhotoLibraryUsageDescription</key>
 <string>Aplikasi membutuhkan akses galeri untuk memilih foto ulasan</string>
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>Aplikasi membutuhkan akses lokasi untuk menampilkan posisi kamu di peta dan menghitung jarak ke tempat bersejarah</string>
 </dict>
 </plist>

@@ -36,40 +36,70 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _getUserLocation() async {
     setState(() => _isLoadingLocation = true);
     try {
-      // Cek permission
+      // 1. Cek apakah layanan lokasi (GPS) HP menyala
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() => _isLoadingLocation = false);
+        _showSnack('Layanan lokasi (GPS) tidak aktif. Nyalakan GPS di pengaturan HP.');
+        return;
+      }
+
+      // 2. Cek & minta permission
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           setState(() => _isLoadingLocation = false);
+          _showSnack('Izin lokasi ditolak.');
           return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
         setState(() => _isLoadingLocation = false);
+        _showSnack(
+          'Izin lokasi diblokir permanen. Aktifkan lewat Pengaturan HP.',
+        );
         return;
       }
 
-      // Ambil posisi user
+      // 3. Ambil posisi user (dengan batas waktu 15 detik)
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15),
       );
 
       setState(() {
-        _userPosition    = position;
+        _userPosition     = position;
         _isLoadingLocation = false;
       });
 
-      // Pindahkan kamera ke posisi user
+      // Simpan lokasi user ke provider agar jarak bisa dihitung
+      if (mounted) {
+        context.read<PlaceProvider>().setUserLocation(
+          position.latitude,
+          position.longitude,
+        );
+      }
+
+      // 4. Pindahkan kamera ke posisi user
       _mapController?.animateCamera(
-        CameraUpdate.newLatLng(
+        CameraUpdate.newLatLngZoom(
           LatLng(position.latitude, position.longitude),
+          15,
         ),
       );
     } catch (e) {
       setState(() => _isLoadingLocation = false);
+      _showSnack('Gagal menemukan lokasi. Pastikan GPS aktif dan coba lagi.');
     }
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+    );
   }
 
   void _buildMarkers() {
@@ -94,6 +124,33 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     setState(() => _markers = markers);
+  }
+
+// Zoom otomatis agar semua pin masuk ke dalam layar
+  void _fitAllMarkers() {
+    if (_markers.isEmpty || _mapController == null) return;
+
+    double minLat =  90, maxLat = -90;
+    double minLng = 180, maxLng = -180;
+
+    for (final m in _markers) {
+      final lat = m.position.latitude;
+      final lng = m.position.longitude;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+    }
+
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        60, // padding pinggir layar
+      ),
+    );
   }
 
   double _getMarkerHue(String? categoryName) {
@@ -132,8 +189,11 @@ class _MapScreenState extends State<MapScreen> {
           // Tombol refresh markers
           IconButton(
             icon:      const Icon(Icons.refresh, color: Colors.white),
-            onPressed: _buildMarkers,
-            tooltip:   'Perbarui Marker',
+            onPressed: () {
+              _buildMarkers();
+              _fitAllMarkers();
+            },
+            tooltip:   'Tampilkan Semua Lokasi',
           ),
         ],
       ),
