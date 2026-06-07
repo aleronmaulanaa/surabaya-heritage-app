@@ -197,6 +197,7 @@ class PlaceCard extends StatelessWidget {
                       const Spacer(),
                       Consumer<PlaceProvider>(
                         builder: (_, pp, __) {
+                          // Prioritas: jarak jalan (road), fallback: garis lurus
                           final dist = pp.distanceTo(place.lat, place.lng);
                           if (dist == null) return const SizedBox.shrink();
                           return Row(
@@ -228,12 +229,28 @@ class PlaceCard extends StatelessWidget {
     );
   }
 
+  IconData _getCategoryIcon() {
+    switch (place.category?.name) {
+      case 'Museum':             return Icons.museum;
+      case 'Monumen & Tugu':     return Icons.account_balance;
+      case 'Bangunan Kolonial':  return Icons.domain;
+      case 'Kawasan Bersejarah': return Icons.location_city;
+      case 'Tempat Ibadah Bersejarah':
+        final name = place.name.toLowerCase();
+        if (name.contains('masjid')) return Icons.mosque;
+        if (name.contains('gereja') || name.contains('church')) return Icons.church;
+        if (name.contains('klenteng') || name.contains('vihara')) return Icons.temple_hindu;
+        return Icons.place;
+      default: return Icons.location_city;
+    }
+  }
+
   Widget _buildPlaceholder(Color color) {
     return Container(
       height: 180,
       width: double.infinity,
       color: color.withOpacity(0.1),
-      child: Icon(Icons.location_city, size: 60, color: color.withOpacity(0.5)),
+      child: Icon(_getCategoryIcon(), size: 60, color: color.withOpacity(0.5)),
     );
   }
 }

@@ -158,11 +158,24 @@ class _DetailScreenState extends State<DetailScreen> {
                               // Tentukan konten setiap slide
                               Widget slideContent;
                               if (adminPhotos.isEmpty && i == 0) {
-                                // Default cover jika tidak ada foto admin
+                                final categoryName = place.category?.name ?? '';
+                                final placeName = place.name.toLowerCase();
+                                IconData coverIcon = Icons.location_city;
+                                switch (categoryName) {
+                                  case 'Museum':             coverIcon = Icons.museum; break;
+                                  case 'Monumen & Tugu':     coverIcon = Icons.account_balance; break;
+                                  case 'Bangunan Kolonial':  coverIcon = Icons.domain; break;
+                                  case 'Kawasan Bersejarah': coverIcon = Icons.location_city; break;
+                                  case 'Tempat Ibadah Bersejarah':
+                                    if (placeName.contains('masjid')) coverIcon = Icons.mosque;
+                                    else if (placeName.contains('gereja') || placeName.contains('church')) coverIcon = Icons.church;
+                                    else if (placeName.contains('klenteng') || placeName.contains('vihara')) coverIcon = Icons.temple_hindu;
+                                    break;
+                                }
                                 slideContent = Container(
                                   color: const Color(0xFF1E3A5F),
-                                  child: const Icon(
-                                    Icons.location_city,
+                                  child: Icon(
+                                    coverIcon,
                                     size: 80,
                                     color: Colors.white54,
                                   ),

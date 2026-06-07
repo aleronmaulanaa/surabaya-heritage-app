@@ -3,6 +3,8 @@ import '../models/place_model.dart';
 import '../models/category_model.dart';
 import '../services/api_service.dart';
 import 'package:geolocator/geolocator.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class PlaceProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
@@ -106,6 +108,45 @@ class PlaceProvider extends ChangeNotifier {
     _userLng = lng;
     _calculateDistances();
     notifyListeners();
+    // Hitung jarak jalan setelah GPS didapat
+    _fetchRoadDistances();
+  }
+
+  Future<void> _fetchRoadDistances() async {
+    if (_userLat == null || _userLng == null || _places.isEmpty) return;
+    debugPrint('[ROAD] Mulai hitung jarak jalan untuk ${_places.length} tempat');
+
+    final futures = _places.map((place) async {
+      try {
+        final url =
+            'http://router.project-osrm.org/route/v1/driving/'
+            '$_userLng,$_userLat;'
+            '${place.lng},${place.lat}'
+            '?overview=false';
+
+        final response = await http
+            .get(Uri.parse(url))
+            .timeout(const Duration(seconds: 10));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data['code'] == 'Ok' && data['routes'].isNotEmpty) {
+            final roadDist = (data['routes'][0]['distance'] as num).toDouble();
+            debugPrint('[ROAD] ${place.name}: $roadDist m');
+            place.distance = roadDist;
+          }
+        } else {
+          debugPrint('[ROAD] GAGAL ${place.name}: status ${response.statusCode}');
+        }
+      } catch (e) {
+        debugPrint('[ROAD] ERROR ${place.name}: $e');
+      }
+    });
+
+    await Future.wait(futures);
+    debugPrint('[ROAD] Selesai, notify listeners');
+    _applyFilter();
+    notifyListeners();
   }
 
   void _calculateDistances() {
@@ -121,6 +162,14 @@ class PlaceProvider extends ChangeNotifier {
   // Hitung jarak ke satu tempat (untuk card & detail)
   double? distanceTo(double lat, double lng) {
     if (_userLat == null || _userLng == null) return null;
+    // Cek apakah jarak jalan sudah tersedia di _places
+    try {
+      final place = _places.firstWhere(
+        (p) => p.lat == lat && p.lng == lng,
+      );
+      if (place.distance != null) return place.distance;
+    } catch (_) {}
+    // Fallback: garis lurus
     return Geolocator.distanceBetween(_userLat!, _userLng!, lat, lng);
   }
 }

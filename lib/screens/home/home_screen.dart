@@ -10,6 +10,7 @@ import '../detail/detail_screen.dart';
 import '../auth/login_screen.dart';
 import '../bookmark/bookmark_screen.dart';
 import '../../providers/bookmark_provider.dart';
+import 'package:geolocator/geolocator.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,6 +24,43 @@ class _HomeScreenState extends State<HomeScreen> {
   final _homeFocusScope  = FocusScopeNode();
   final _homeScrollCtrl  = ScrollController();
   int _currentIndex      = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initLocation();
+    });
+  }
+
+  Future<void> _initLocation() async {
+    try {
+      // Cek apakah layanan lokasi menyala
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      // Cek & minta permission
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return;
+      }
+      if (permission == LocationPermission.deniedForever) return;
+
+      // Ambil posisi & simpan ke provider
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15),
+      );
+
+      if (mounted) {
+        context.read<PlaceProvider>().setUserLocation(
+          position.latitude,
+          position.longitude,
+        );
+      }
+    } catch (_) {}
+  }
 
   @override
   void dispose() {
