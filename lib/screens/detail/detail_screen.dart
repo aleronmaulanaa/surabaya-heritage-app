@@ -101,6 +101,30 @@ class _DetailScreenState extends State<DetailScreen> {
     }
   }
 
+  IconData _getCategoryIcon(String categoryName, String placeName) {
+    if (categoryName == 'Tempat Ibadah Bersejarah') {
+      final lower = placeName.toLowerCase();
+      if (lower.contains('masjid')) return Icons.mosque;
+      if (lower.contains('gereja') || lower.contains('church'))
+        return Icons.church;
+      if (lower.contains('klenteng') || lower.contains('vihara'))
+        return Icons.temple_hindu;
+      return Icons.place;
+    }
+    switch (categoryName) {
+      case 'Museum':
+        return Icons.museum;
+      case 'Monumen & Tugu':
+        return Icons.account_balance;
+      case 'Bangunan Kolonial':
+        return Icons.domain;
+      case 'Kawasan Bersejarah':
+        return Icons.location_city;
+      default:
+        return Icons.place;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -108,8 +132,8 @@ class _DetailScreenState extends State<DetailScreen> {
       body: Consumer<PlaceProvider>(
         builder: (_, provider, __) {
           if (provider.isDetailLoading) {
-  return const Scaffold(body: LoadingWidget());
-}
+            return const Scaffold(body: LoadingWidget());
+          }
 
           final place = provider.selectedPlace;
           if (place == null) {
@@ -155,48 +179,49 @@ class _DetailScreenState extends State<DetailScreen> {
                             onPageChanged: (i) =>
                                 setState(() => _currentPage = i),
                             itemBuilder: (_, i) {
-                              // Tentukan konten setiap slide
+                              final categoryName = place.category?.name ?? '';
+                              final placeName = place.name.toLowerCase();
+                              final categoryColor = Color(
+                                AppConstants.categoryColors[place.category?.name] ?? 0xFF1E3A5F,
+                              );
+                              IconData coverIcon = Icons.location_city;
+                              switch (categoryName) {
+                                case 'Museum':             coverIcon = Icons.museum; break;
+                                case 'Monumen & Tugu':     coverIcon = Icons.account_balance; break;
+                                case 'Bangunan Kolonial':  coverIcon = Icons.domain; break;
+                                case 'Kawasan Bersejarah': coverIcon = Icons.location_city; break;
+                                case 'Tempat Ibadah Bersejarah':
+                                  if (placeName.contains('masjid')) coverIcon = Icons.mosque;
+                                  else if (placeName.contains('gereja') || placeName.contains('church')) coverIcon = Icons.church;
+                                  else if (placeName.contains('klenteng') || placeName.contains('vihara')) coverIcon = Icons.temple_hindu;
+                                  break;
+                              }
+
                               Widget slideContent;
                               if (adminPhotos.isEmpty && i == 0) {
-                                final categoryName = place.category?.name ?? '';
-                                final placeName = place.name.toLowerCase();
-                                IconData coverIcon = Icons.location_city;
-                                switch (categoryName) {
-                                  case 'Museum':             coverIcon = Icons.museum; break;
-                                  case 'Monumen & Tugu':     coverIcon = Icons.account_balance; break;
-                                  case 'Bangunan Kolonial':  coverIcon = Icons.domain; break;
-                                  case 'Kawasan Bersejarah': coverIcon = Icons.location_city; break;
-                                  case 'Tempat Ibadah Bersejarah':
-                                    if (placeName.contains('masjid')) coverIcon = Icons.mosque;
-                                    else if (placeName.contains('gereja') || placeName.contains('church')) coverIcon = Icons.church;
-                                    else if (placeName.contains('klenteng') || placeName.contains('vihara')) coverIcon = Icons.temple_hindu;
-                                    break;
-                                }
                                 slideContent = Container(
-                                  color: const Color(0xFF1E3A5F),
+                                  color: Color.alphaBlend(categoryColor.withOpacity(0.1), const Color(0xFF1E3A5F)),
                                   child: Icon(
                                     coverIcon,
                                     size: 80,
-                                    color: Colors.white54,
+                                    color: categoryColor.withOpacity(0.5),
                                   ),
                                 );
                               } else if (i < adminPhotos.length) {
-                                // Foto admin
                                 slideContent = Image.network(
                                   adminPhotos[i],
                                   fit: BoxFit.cover,
                                   width: double.infinity,
                                   errorBuilder: (_, __, ___) => Container(
-                                    color: const Color(0xFF1E3A5F),
-                                    child: const Icon(
-                                      Icons.location_city,
+                                    color: Color.alphaBlend(categoryColor.withOpacity(0.1), const Color(0xFF1E3A5F)),
+                                    child: Icon(
+                                      coverIcon,
                                       size: 80,
-                                      color: Colors.white54,
+                                      color: categoryColor.withOpacity(0.5),
                                     ),
                                   ),
                                 );
                               } else {
-                                // Foto review
                                 final reviewIndex = adminPhotos.isEmpty
                                     ? i - 1
                                     : i - adminPhotos.length;
@@ -205,11 +230,11 @@ class _DetailScreenState extends State<DetailScreen> {
                                   fit: BoxFit.cover,
                                   width: double.infinity,
                                   errorBuilder: (_, __, ___) => Container(
-                                    color: const Color(0xFF1E3A5F),
-                                    child: const Icon(
-                                      Icons.location_city,
+                                    color: Color.alphaBlend(categoryColor.withOpacity(0.1), const Color(0xFF1E3A5F)),
+                                    child: Icon(
+                                      coverIcon,
                                       size: 80,
-                                      color: Colors.white54,
+                                      color: categoryColor.withOpacity(0.5),
                                     ),
                                   ),
                                 );
@@ -217,7 +242,6 @@ class _DetailScreenState extends State<DetailScreen> {
 
                               return GestureDetector(
                                 onTap: () {
-                                  // Kumpulkan semua foto untuk fullscreen
                                   final all = <String>[
                                     ...adminPhotos,
                                     ...reviewPhotos,
@@ -425,18 +449,37 @@ class _DetailScreenState extends State<DetailScreen> {
                                 ).withOpacity(0.15),
                                 borderRadius: BorderRadius.circular(20),
                               ),
-                              child: Text(
-                                place.category!.name,
-                                style: TextStyle(
-                                  color: Color(
-                                    AppConstants.categoryColors[place
-                                            .category!
-                                            .name] ??
-                                        0xFF1E3A5F,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _getCategoryIcon(
+                                      place.category!.name,
+                                      place.name,
+                                    ),
+                                    size: 14,
+                                    color: Color(
+                                      AppConstants.categoryColors[place
+                                              .category!
+                                              .name] ??
+                                          0xFF1E3A5F,
+                                    ),
                                   ),
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    place.category!.name,
+                                    style: TextStyle(
+                                      color: Color(
+                                        AppConstants.categoryColors[place
+                                                .category!
+                                                .name] ??
+                                            0xFF1E3A5F,
+                                      ),
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           const Spacer(),

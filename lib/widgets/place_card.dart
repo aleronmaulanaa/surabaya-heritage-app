@@ -119,7 +119,7 @@ class PlaceCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Kategori badge
-                  if (place.category != null)
+                 if (place.category != null)
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -129,13 +129,24 @@ class PlaceCard extends StatelessWidget {
                         color: categoryColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(
-                        place.category!.name,
-                        style: TextStyle(
-                          color: categoryColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _getCategoryIcon(),
+                            size: 12,
+                            color: categoryColor,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            place.category!.name,
+                            style: TextStyle(
+                              color: categoryColor,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   const SizedBox(height: 8),

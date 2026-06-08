@@ -28,6 +28,8 @@ class _MapScreenState extends State<MapScreen> {
   bool _isLoadingRoute = false;
   bool _showBottomSheet = false;
   bool _isHoursExpanded = false;
+  double _bottomSheetHeight = 0;
+  int _slidePage = 0;
 
   static const CameraPosition _surabayaCenter = CameraPosition(
     target: LatLng(-7.2575, 112.7521),
@@ -300,13 +302,15 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _onMarkerTapped(PlaceModel place) {
+    final screenHeight = MediaQuery.of(context).size.height;
     setState(() {
       _selectedPlace = place;
       _polylines = {};
       _showBottomSheet = true;
       _isHoursExpanded = false;
+      _slidePage = 0;
+      _bottomSheetHeight = screenHeight * 0.48;
     });
-    // Geser kamera sedikit ke atas supaya marker tidak tertutup bottom sheet
     _mapController?.animateCamera(
       CameraUpdate.newLatLng(LatLng(place.lat - 0.003, place.lng)),
     );
@@ -316,6 +320,7 @@ class _MapScreenState extends State<MapScreen> {
     setState(() {
       _showBottomSheet = false;
       _polylines = {};
+      _bottomSheetHeight = 0;
     });
     Future.delayed(const Duration(milliseconds: 350), () {
       if (mounted) setState(() => _selectedPlace = null);
@@ -597,7 +602,7 @@ class _MapScreenState extends State<MapScreen> {
 
           // ── Tombol lokasi user ──────────────────────────────
           Positioned(
-            bottom: _showBottomSheet ? 420 : 100,
+            bottom: _showBottomSheet ? _bottomSheetHeight + 16 : 30,
             right: 16,
             child: AnimatedSlide(
               offset: Offset.zero,
@@ -612,9 +617,9 @@ class _MapScreenState extends State<MapScreen> {
           ),
 
           // ── Legend ──────────────────────────────────────────
-          if (!_showBottomSheet)
+           if (!_showBottomSheet)
             Positioned(
-              bottom: 16,
+              bottom: 30,
               left: 16,
               child: Container(
                 padding: const EdgeInsets.all(8),
@@ -642,408 +647,380 @@ class _MapScreenState extends State<MapScreen> {
             ),
 
           // ── Bottom sheet dengan animasi slide ───────────────
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 350),
-            curve: Curves.easeInOut,
-            bottom: _showBottomSheet ? 0 : -600,
-            left: 0,
-            right: 0,
-            child: _selectedPlace == null
-                ? const SizedBox.shrink()
-                : _buildBottomSheet(_selectedPlace!),
-          ),
+           if (_showBottomSheet && _selectedPlace != null)
+            NotificationListener<DraggableScrollableNotification>(
+              onNotification: (notification) {
+                final screenHeight = MediaQuery.of(context).size.height;
+                final newHeight = notification.extent * screenHeight;
+                if (mounted && (newHeight - _bottomSheetHeight).abs() > 1) {
+                  setState(() => _bottomSheetHeight = newHeight);
+                }
+                // Tutup jika diturunkan sampai paling bawah
+                if (notification.extent <= 0.16) {
+                  _closeBottomSheet();
+                }
+                return true;
+              },
+              child: DraggableScrollableSheet(
+                initialChildSize: 0.48,
+                minChildSize: 0.15,
+                maxChildSize: 0.82,
+                snap: true,
+                snapSizes: const [0.15, 0.48, 0.82],
+                builder: (context, scrollController) {
+                  return _buildBottomSheet(_selectedPlace!, scrollController);
+                },
+              ),
+            ),
         ],
       ),
     );
   }
 
   // ── Bottom Sheet Content ───────────────────────────────────
-  Widget _buildBottomSheet(PlaceModel place) {
+  Widget _buildBottomSheet(PlaceModel place, ScrollController scrollController) {
     final isOpen = _isOpenNow(place.openingHours);
     final todayHours = _getTodayHours(place.openingHours);
-    final shortDesc = place.description.length > 100
-        ? '${place.description.substring(0, 100)}...'
+    final shortDesc = place.description.length > 120
+        ? '${place.description.substring(0, 120)}...'
         : place.description;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isExpanded = _bottomSheetHeight > screenHeight * 0.6;
 
     return Container(
-      constraints: const BoxConstraints(maxHeight: 520),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      child: ListView(
+        controller: scrollController,
+        padding: EdgeInsets.zero,
+        shrinkWrap: true,
         children: [
-          // Handle bar + drag
-          GestureDetector(
-            onVerticalDragEnd: (details) {
-              if (details.primaryVelocity! > 300) _closeBottomSheet();
-            },
+          // ── Handle bar ────────────────────────────
+          Center(
             child: Container(
-              color: Colors.transparent,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
           ),
 
-          Flexible(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          // ── Level EXPANDED: foto slideshow besar ──
+          if (isExpanded) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Foto slideshow ────────────────────────
-                  if (place.photos.isNotEmpty)
-                    SizedBox(
-                      height: 160,
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: SizedBox(
+                      height: 180,
                       child: PageView.builder(
-                        itemCount: place.photos.length,
-                        itemBuilder: (_, i) => ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.network(
+                        itemCount: place.photos.isNotEmpty ? place.photos.length : 1,
+                        onPageChanged: (i) => setState(() => _slidePage = i),
+                        itemBuilder: (_, i) {
+                          if (place.photos.isEmpty) {
+                            return Container(
+                              color: _getCategoryColor(place.category?.name).withOpacity(0.1),
+                              child: Icon(
+                                _getCategoryIcon(place.category?.name ?? '', place.name),
+                                size: 60,
+                                color: _getCategoryColor(place.category?.name),
+                              ),
+                            );
+                          }
+                          return Image.network(
                             place.photos[i],
                             fit: BoxFit.cover,
                             width: double.infinity,
                             errorBuilder: (_, __, ___) => Container(
-                              color: const Color(0xFF1E3A5F).withOpacity(0.1),
-                              child: const Icon(
-                                Icons.location_city,
-                                size: 50,
-                                color: Color(0xFF1E3A5F),
+                              color: _getCategoryColor(place.category?.name).withOpacity(0.1),
+                              child: Icon(
+                                _getCategoryIcon(place.category?.name ?? '', place.name),
+                                size: 60,
+                                color: _getCategoryColor(place.category?.name),
                               ),
                             ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                  const SizedBox(height: 12),
-
-                  // ── Nama & kategori ───────────────────────
-                  Text(
-                    place.name,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E3A5F),
-                    ),
-                  ),
-                  if (place.category != null)
-                    Container(
-                      margin: const EdgeInsets.only(top: 4),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _getCategoryColor(
-                          place.category!.name,
-                        ).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        place.category!.name,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: _getCategoryColor(place.category!.name),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-
-                  const SizedBox(height: 8),
-
-                  // ── Rating & jarak ────────────────────────
-                  Row(
-                    children: [
-                      const Icon(Icons.star, size: 14, color: Colors.amber),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${place.avgRating.toStringAsFixed(1)} (${place.reviewCount})',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      const SizedBox(width: 12),
-                      Consumer<PlaceProvider>(
-                        builder: (_, pp, __) {
-                          final dist = pp.distanceTo(place.lat, place.lng);
-                          if (dist == null) return const SizedBox.shrink();
-                          return Row(
-                            children: [
-                              const Icon(
-                                Icons.directions_walk,
-                                size: 14,
-                                color: Colors.grey,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                dist < 1000
-                                    ? '${dist.toStringAsFixed(0)} m'
-                                    : '${(dist / 1000).toStringAsFixed(1)} km',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ],
                           );
                         },
                       ),
-                    ],
+                    ),
                   ),
-
-                  const SizedBox(height: 8),
-
-                  // ── Alamat ────────────────────────────────
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(
-                        Icons.location_on,
-                        size: 14,
-                        color: Colors.red,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          place.address,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.black87,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  // ── Telepon ───────────────────────────────
-                  if (place.phone.isNotEmpty) ...[
-                    const SizedBox(height: 4),
+                  if (place.photos.length > 1) ...[
+                    const SizedBox(height: 8),
                     Row(
-                      children: [
-                        const Icon(Icons.phone, size: 14, color: Colors.green),
-                        const SizedBox(width: 6),
-                        Text(
-                          place.phone,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.black87,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(
+                        place.photos.length,
+                        (i) => AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          width: _slidePage == i ? 16 : 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: _slidePage == i
+                                ? const Color(0xFF1E3A5F)
+                                : Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(4),
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
 
-                  // ── Website ───────────────────────────────
-                  if (place.website.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.language,
-                          size: 14,
-                          color: Colors.blue,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            place.website,
+          // ── Info utama ────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Foto kotak kecil — hanya saat TIDAK expanded
+                    if (!isExpanded) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: place.photos.isNotEmpty
+                            ? Image.network(
+                                place.photos[0],
+                                width: 80,
+                                height: 80,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  width: 80,
+                                  height: 80,
+                                  color: _getCategoryColor(place.category?.name).withOpacity(0.1),
+                                  child: Icon(
+                                    _getCategoryIcon(place.category?.name ?? '', place.name),
+                                    size: 32,
+                                    color: _getCategoryColor(place.category?.name),
+                                  ),
+                                ),
+                              )
+                            : Container(
+                                width: 80,
+                                height: 80,
+                                color: _getCategoryColor(place.category?.name).withOpacity(0.1),
+                                child: Icon(
+                                  _getCategoryIcon(place.category?.name ?? '', place.name),
+                                  size: 32,
+                                  color: _getCategoryColor(place.category?.name),
+                                ),
+                              ),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
+                    // Nama, kategori, rating
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            place.name,
                             style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.blue,
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E3A5F),
                             ),
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-
-                  // ── Jam buka dropdown ─────────────────────
-                  if (place.openingHours.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    GestureDetector(
-                      onTap: () =>
-                          setState(() => _isHoursExpanded = !_isHoursExpanded),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.access_time,
-                                  size: 14,
-                                  color: isOpen ? Colors.green : Colors.red,
+                          if (place.category != null) ...[
+                            const SizedBox(height: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: _getCategoryColor(place.category!.name).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                place.category!.name,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: _getCategoryColor(place.category!.name),
+                                  fontWeight: FontWeight.w600,
                                 ),
-                                const SizedBox(width: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: isOpen
-                                        ? Colors.green.withOpacity(0.1)
-                                        : Colors.red.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    isOpen ? 'Buka' : 'Tutup',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: isOpen ? Colors.green : Colors.red,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    todayHours,
-                                    style: const TextStyle(fontSize: 12),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                Icon(
-                                  _isHoursExpanded
-                                      ? Icons.expand_less
-                                      : Icons.expand_more,
-                                  size: 16,
-                                  color: Colors.grey,
-                                ),
-                              ],
+                              ),
                             ),
-                            // Dropdown semua jam buka
-                            if (_isHoursExpanded) ...[
-                              const SizedBox(height: 8),
-                              const Divider(height: 1),
-                              const SizedBox(height: 8),
-                              ...place.openingHours.map(
-                                (h) => Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 2,
-                                  ),
-                                  child: Row(
+                          ],
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              const Icon(Icons.star, size: 14, color: Colors.amber),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${place.avgRating.toStringAsFixed(1)} (${place.reviewCount})',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                              const SizedBox(width: 10),
+                              Consumer<PlaceProvider>(
+                                builder: (_, pp, __) {
+                                  final dist = pp.distanceTo(place.lat, place.lng);
+                                  if (dist == null) return const SizedBox.shrink();
+                                  return Row(
                                     children: [
-                                      const SizedBox(width: 20),
+                                      const Icon(Icons.directions_walk, size: 14, color: Colors.grey),
+                                      const SizedBox(width: 4),
                                       Text(
-                                        h,
-                                        style: const TextStyle(fontSize: 12),
+                                        dist < 1000
+                                            ? '${dist.toStringAsFixed(0)} m'
+                                            : '${(dist / 1000).toStringAsFixed(1)} km',
+                                        style: const TextStyle(fontSize: 12, color: Colors.grey),
                                       ),
                                     ],
-                                  ),
-                                ),
+                                  );
+                                },
                               ),
                             ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-
-                  // ── Deskripsi singkat ─────────────────────
-                  if (place.description.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    RichText(
-                      text: TextSpan(
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.black87,
-                          height: 1.5,
-                        ),
-                        children: [
-                          TextSpan(text: shortDesc),
-                          if (place.description.length > 100)
-                            const TextSpan(
-                              text: ' lihat lebih lengkap di detail lokasi',
-                              style: TextStyle(
-                                color: Color(0xFF1E3A5F),
-                                fontStyle: FontStyle.italic,
-                              ),
-                            ),
+                          ),
                         ],
                       ),
                     ),
                   ],
+                ),
 
-                  const SizedBox(height: 12),
+                const SizedBox(height: 12),
 
-                  // ── Tombol aksi ───────────────────────────
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          icon: _isLoadingRoute
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(Icons.directions, size: 18),
-                          label: Text(
-                            _isLoadingRoute
-                                ? 'Menghitung...'
-                                : 'Tampilkan Rute',
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF1E3A5F),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          onPressed: _isLoadingRoute
-                              ? null
-                              : () => _getRoute(place),
-                        ),
+                // ── Alamat (selalu tampil) ────────────
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.location_on, size: 14, color: Colors.red),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text(place.address, style: const TextStyle(fontSize: 12, color: Colors.black87))),
+                  ],
+                ),
+
+                // ── Telepon ───────────────────────────
+                if (place.phone.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    const Icon(Icons.phone, size: 14, color: Colors.green),
+                    const SizedBox(width: 6),
+                    Text(place.phone, style: const TextStyle(fontSize: 12, color: Colors.black87)),
+                  ]),
+                ],
+
+                // ── Website ───────────────────────────
+                if (place.website.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    const Icon(Icons.language, size: 14, color: Colors.blue),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text(place.website, style: const TextStyle(fontSize: 12, color: Colors.blue), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  ]),
+                ],
+
+                // ── Jam buka ──────────────────────────
+                if (place.openingHours.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  GestureDetector(
+                    onTap: () => setState(() => _isHoursExpanded = !_isHoursExpanded),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade200),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.info_outline, size: 18),
-                          label: const Text('Lihat Detail'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF1E3A5F),
-                            side: const BorderSide(color: Color(0xFF1E3A5F)),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                      child: Column(children: [
+                        Row(children: [
+                          Icon(Icons.access_time, size: 14, color: isOpen ? Colors.green : Colors.red),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isOpen ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
                             ),
+                            child: Text(isOpen ? 'Buka' : 'Tutup', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isOpen ? Colors.green : Colors.red)),
                           ),
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => DetailScreen(placeId: place.id),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                          const SizedBox(width: 6),
+                          Expanded(child: Text(todayHours, style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                          Icon(_isHoursExpanded ? Icons.expand_less : Icons.expand_more, size: 16, color: Colors.grey),
+                        ]),
+                        if (_isHoursExpanded) ...[
+                          const SizedBox(height: 8),
+                          const Divider(height: 1),
+                          const SizedBox(height: 8),
+                          ...place.openingHours.map((h) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: Row(children: [const SizedBox(width: 20), Text(h, style: const TextStyle(fontSize: 12))]),
+                          )),
+                        ],
+                      ]),
+                    ),
                   ),
                 ],
-              ),
+
+                // ── Deskripsi ─────────────────────────
+                if (place.description.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  RichText(
+                    text: TextSpan(
+                      style: const TextStyle(fontSize: 12, color: Colors.black87, height: 1.5),
+                      children: [
+                        TextSpan(text: shortDesc),
+                        if (place.description.length > 120)
+                          const TextSpan(
+                            text: ' lihat lebih lengkap di detail lokasi',
+                            style: TextStyle(color: Color(0xFF1E3A5F), fontStyle: FontStyle.italic),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 12),
+
+                // ── Tombol aksi ───────────────────────
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        icon: _isLoadingRoute
+                            ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.directions, size: 18),
+                        label: Text(_isLoadingRoute ? 'Menghitung...' : 'Tampilkan Rute'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1E3A5F),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: _isLoadingRoute ? null : () => _getRoute(place),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.info_outline, size: 18),
+                        label: const Text('Lihat Detail'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF1E3A5F),
+                          side: const BorderSide(color: Color(0xFF1E3A5F)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => DetailScreen(placeId: place.id)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
