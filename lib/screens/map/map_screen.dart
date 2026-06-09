@@ -10,6 +10,7 @@ import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import '../../providers/place_provider.dart';
 import '../../models/place_model.dart';
 import '../detail/detail_screen.dart';
+import '../../models/review_model.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -30,6 +31,10 @@ class _MapScreenState extends State<MapScreen> {
   bool _isHoursExpanded = false;
   double _bottomSheetHeight = 0;
   int _slidePage = 0;
+  bool _isExpanded = false;
+  double _dragOffset = 0;
+  double _normalSheetHeight = 0;
+  final PageController _slideController = PageController();
 
   static const CameraPosition _surabayaCenter = CameraPosition(
     target: LatLng(-7.2575, 112.7521),
@@ -100,15 +105,15 @@ class _MapScreenState extends State<MapScreen> {
     String categoryName,
     String placeName,
   ) async {
-    final color    = _getCategoryColor(categoryName);
+    final color = _getCategoryColor(categoryName);
     final iconData = _getCategoryIcon(categoryName, placeName);
 
     const double circleRadius = 60.0;
-    const double pinWidth     = circleRadius * 2 + 8;
-    const double tailHeight   = 28.0;
-    const double circleY      = circleRadius + 4;
-    const double totalHeight  = circleY + circleRadius + tailHeight + 4;
-    const double iconSize     = 58.0;
+    const double pinWidth = circleRadius * 2 + 8;
+    const double tailHeight = 28.0;
+    const double circleY = circleRadius + 4;
+    const double totalHeight = circleY + circleRadius + tailHeight + 4;
+    const double iconSize = 58.0;
 
     final shortName = placeName.length > 20
         ? '${placeName.substring(0, 20)}...'
@@ -117,20 +122,17 @@ class _MapScreenState extends State<MapScreen> {
     final textPainterMeasure = TextPainter(
       text: TextSpan(
         text: shortName,
-        style: const TextStyle(
-          fontSize:   44,
-          fontWeight: FontWeight.w700,
-        ),
+        style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w700),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
 
-    final double labelWidth   = textPainterMeasure.width + 8;
-    final double canvasWidth  = labelWidth > pinWidth ? labelWidth : pinWidth;
+    final double labelWidth = textPainterMeasure.width + 8;
+    final double canvasWidth = labelWidth > pinWidth ? labelWidth : pinWidth;
     final double canvasHeight = totalHeight + textPainterMeasure.height + 6;
 
     final recorder = ui.PictureRecorder();
-    final canvas   = Canvas(recorder);
+    final canvas = Canvas(recorder);
     final double centerX = canvasWidth / 2;
 
     // ── Shadow ────────────────────────────────────────────
@@ -155,16 +157,16 @@ class _MapScreenState extends State<MapScreen> {
       Offset(centerX, circleY),
       circleRadius,
       Paint()
-        ..color      = Colors.white
+        ..color = Colors.white
         ..strokeWidth = 4
-        ..style      = PaintingStyle.stroke,
+        ..style = PaintingStyle.stroke,
     );
 
     // ── Ekor pin ──────────────────────────────────────────
     final tailPath = Path()
       ..moveTo(centerX - 10, circleY + circleRadius - 2)
       ..lineTo(centerX + 10, circleY + circleRadius - 2)
-      ..lineTo(centerX,      circleY + circleRadius + tailHeight)
+      ..lineTo(centerX, circleY + circleRadius + tailHeight)
       ..close();
     canvas.drawPath(tailPath, Paint()..color = color);
 
@@ -173,19 +175,16 @@ class _MapScreenState extends State<MapScreen> {
       text: TextSpan(
         text: String.fromCharCode(iconData.codePoint),
         style: TextStyle(
-          fontSize:   iconSize,
+          fontSize: iconSize,
           fontFamily: iconData.fontFamily,
-          color:      Colors.white,
+          color: Colors.white,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
     iconPainter.paint(
       canvas,
-      Offset(
-        centerX - iconPainter.width / 2,
-        circleY - iconPainter.height / 2,
-      ),
+      Offset(centerX - iconPainter.width / 2, circleY - iconPainter.height / 2),
     );
 
     // ── Nama lokasi dengan outline ────────────────────────
@@ -197,18 +196,23 @@ class _MapScreenState extends State<MapScreen> {
       text: TextSpan(
         text: shortName,
         style: const TextStyle(
-          fontSize:   44,
+          fontSize: 44,
           fontWeight: FontWeight.w700,
-          color:      Colors.black,
+          color: Colors.black,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
 
     const offsets = [
-      Offset(-1, -1), Offset(0, -1), Offset(1, -1),
-      Offset(-1,  0),                Offset(1,  0),
-      Offset(-1,  1), Offset(0,  1), Offset(1,  1),
+      Offset(-1, -1),
+      Offset(0, -1),
+      Offset(1, -1),
+      Offset(-1, 0),
+      Offset(1, 0),
+      Offset(-1, 1),
+      Offset(0, 1),
+      Offset(1, 1),
     ];
     for (final o in offsets) {
       outlinePainter.paint(canvas, Offset(labelX + o.dx, labelY + o.dy));
@@ -219,9 +223,9 @@ class _MapScreenState extends State<MapScreen> {
       text: TextSpan(
         text: shortName,
         style: TextStyle(
-          fontSize:   44,
+          fontSize: 44,
           fontWeight: FontWeight.w700,
-          color:      color,
+          color: color,
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -229,7 +233,7 @@ class _MapScreenState extends State<MapScreen> {
     labelPainter.paint(canvas, Offset(labelX, labelY));
 
     final picture = recorder.endRecording();
-    final image   = await picture.toImage(
+    final image = await picture.toImage(
       canvasWidth.toInt() + 4,
       canvasHeight.toInt() + 4,
     );
@@ -278,6 +282,17 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  // ── Kumpulkan foto dari review ────────────────────────────
+  List<String> _getReviewPhotos(PlaceModel place) {
+    final List<String> photos = [];
+    for (final r in place.reviews) {
+      if (r.photoUrl != null && r.photoUrl!.isNotEmpty) photos.add(r.photoUrl!);
+      if (r.photoUrl2 != null && r.photoUrl2!.isNotEmpty)
+        photos.add(r.photoUrl2!);
+    }
+    return photos;
+  }
+
   // ── Markers ────────────────────────────────────────────────
   Future<void> _buildMarkers() async {
     final places = context.read<PlaceProvider>().allPlaces;
@@ -302,14 +317,15 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _onMarkerTapped(PlaceModel place) {
-    final screenHeight = MediaQuery.of(context).size.height;
     setState(() {
       _selectedPlace = place;
       _polylines = {};
       _showBottomSheet = true;
       _isHoursExpanded = false;
+      _isExpanded = false;
       _slidePage = 0;
-      _bottomSheetHeight = screenHeight * 0.48;
+      _dragOffset = 0;
+      _normalSheetHeight = 0;
     });
     _mapController?.animateCamera(
       CameraUpdate.newLatLng(LatLng(place.lat - 0.003, place.lng)),
@@ -320,7 +336,10 @@ class _MapScreenState extends State<MapScreen> {
     setState(() {
       _showBottomSheet = false;
       _polylines = {};
+      _isExpanded = false;
       _bottomSheetHeight = 0;
+      _dragOffset = 0;
+      _normalSheetHeight = 0;
     });
     Future.delayed(const Duration(milliseconds: 350), () {
       if (mounted) setState(() => _selectedPlace = null);
@@ -601,23 +620,43 @@ class _MapScreenState extends State<MapScreen> {
             ),
 
           // ── Tombol lokasi user ──────────────────────────────
-          Positioned(
-            bottom: _showBottomSheet ? _bottomSheetHeight + 16 : 30,
-            right: 16,
-            child: AnimatedSlide(
-              offset: Offset.zero,
-              duration: const Duration(milliseconds: 300),
-              child: FloatingActionButton(
-                mini: true,
-                backgroundColor: Colors.white,
-                onPressed: _getUserLocation,
-                child: const Icon(Icons.my_location, color: Color(0xFF1E3A5F)),
-              ),
-            ),
+          Builder(
+            builder: (context) {
+              // Sembunyikan saat bottom sheet di level maksimal
+              if (_showBottomSheet && _isExpanded) {
+                return const SizedBox.shrink();
+              }
+
+              double targetBottom;
+              if (!_showBottomSheet) {
+                targetBottom = 30;
+              } else {
+                final base = _normalSheetHeight > 0
+                    ? _normalSheetHeight
+                    : _bottomSheetHeight;
+                // Drag offset disesuaikan supaya seirama: dragOffset (0–1) × tinggi normal
+                final dragPixels = _dragOffset * base;
+                targetBottom = base + 16 - dragPixels;
+                if (targetBottom < 30) targetBottom = 30;
+              }
+              return Positioned(
+                bottom: targetBottom,
+                right: 16,
+                child: FloatingActionButton(
+                  mini: true,
+                  backgroundColor: Colors.white,
+                  onPressed: _getUserLocation,
+                  child: const Icon(
+                    Icons.my_location,
+                    color: Color(0xFF1E3A5F),
+                  ),
+                ),
+              );
+            },
           ),
 
           // ── Legend ──────────────────────────────────────────
-           if (!_showBottomSheet)
+          if (!_showBottomSheet)
             Positioned(
               bottom: 30,
               left: 16,
@@ -636,40 +675,88 @@ class _MapScreenState extends State<MapScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _LegendItem(color: const Color(0xFF4CAF50), label: 'Museum',             icon: Icons.museum),
-                    _LegendItem(color: const Color(0xFF2196F3), label: 'Monumen & Tugu',     icon: Icons.account_balance),
-                    _LegendItem(color: const Color(0xFFFF9800), label: 'Bangunan Kolonial',  icon: Icons.domain),
-                    _LegendItem(color: const Color(0xFF9C27B0), label: 'Kawasan Bersejarah', icon: Icons.location_city),
-                    _LegendItem(color: const Color(0xFFE91E63), label: 'Tempat Ibadah:',     icon: Icons.place, isIbadah: true),
+                    _LegendItem(
+                      color: const Color(0xFF4CAF50),
+                      label: 'Museum',
+                      icon: Icons.museum,
+                    ),
+                    _LegendItem(
+                      color: const Color(0xFF2196F3),
+                      label: 'Monumen & Tugu',
+                      icon: Icons.account_balance,
+                    ),
+                    _LegendItem(
+                      color: const Color(0xFFFF9800),
+                      label: 'Bangunan Kolonial',
+                      icon: Icons.domain,
+                    ),
+                    _LegendItem(
+                      color: const Color(0xFF9C27B0),
+                      label: 'Kawasan Bersejarah',
+                      icon: Icons.location_city,
+                    ),
+                    _LegendItem(
+                      color: const Color(0xFFE91E63),
+                      label: 'Tempat Ibadah:',
+                      icon: Icons.place,
+                      isIbadah: true,
+                    ),
                   ],
                 ),
               ),
             ),
 
           // ── Bottom sheet dengan animasi slide ───────────────
-           if (_showBottomSheet && _selectedPlace != null)
-            NotificationListener<DraggableScrollableNotification>(
-              onNotification: (notification) {
-                final screenHeight = MediaQuery.of(context).size.height;
-                final newHeight = notification.extent * screenHeight;
-                if (mounted && (newHeight - _bottomSheetHeight).abs() > 1) {
-                  setState(() => _bottomSheetHeight = newHeight);
-                }
-                // Tutup jika diturunkan sampai paling bawah
-                if (notification.extent <= 0.16) {
-                  _closeBottomSheet();
-                }
-                return true;
-              },
-              child: DraggableScrollableSheet(
-                initialChildSize: 0.48,
-                minChildSize: 0.15,
-                maxChildSize: 0.82,
-                snap: true,
-                snapSizes: const [0.15, 0.48, 0.82],
-                builder: (context, scrollController) {
-                  return _buildBottomSheet(_selectedPlace!, scrollController);
-                },
+          if (_showBottomSheet && _selectedPlace != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: AnimatedSlide(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+                offset: Offset(0, _dragOffset),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.deferToChild,
+                  onVerticalDragUpdate: (details) {
+                    setState(() {
+                      _dragOffset = (_dragOffset + details.delta.dy / 300)
+                          .clamp(0.0, 1.0);
+                    });
+                  },
+                  onVerticalDragEnd: (details) {
+                    final velocity = details.primaryVelocity ?? 0;
+                    // Swipe ke atas → expand
+                    if (velocity < -300 && !_isExpanded) {
+                      setState(() {
+                        _isExpanded = true;
+                        _dragOffset = 0;
+                      });
+                    }
+                    // Swipe ke bawah → collapse atau tutup
+                    else if (velocity > 300) {
+                      if (_isExpanded) {
+                        setState(() {
+                          _isExpanded = false;
+                          _dragOffset = 0;
+                        });
+                      } else if (_dragOffset > 0.15) {
+                        _closeBottomSheet();
+                      } else {
+                        setState(() => _dragOffset = 0);
+                      }
+                    }
+                    // Drag pelan
+                    else {
+                      if (_dragOffset > 0.3) {
+                        _closeBottomSheet();
+                      } else {
+                        setState(() => _dragOffset = 0);
+                      }
+                    }
+                  },
+                  child: _buildBottomSheet(_selectedPlace!),
+                ),
               ),
             ),
         ],
@@ -678,363 +765,693 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   // ── Bottom Sheet Content ───────────────────────────────────
-  Widget _buildBottomSheet(PlaceModel place, ScrollController scrollController) {
+  Widget _buildBottomSheet(PlaceModel place) {
     final isOpen = _isOpenNow(place.openingHours);
     final todayHours = _getTodayHours(place.openingHours);
     final shortDesc = place.description.length > 120
         ? '${place.description.substring(0, 120)}...'
         : place.description;
-    final screenHeight = MediaQuery.of(context).size.height;
-    final isExpanded = _bottomSheetHeight > screenHeight * 0.6;
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
-      ),
-      child: ListView(
-        controller: scrollController,
-        padding: EdgeInsets.zero,
-        shrinkWrap: true,
-        children: [
-          // ── Handle bar ────────────────────────────
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Update tinggi setelah render — untuk posisi tombol pusatkan
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            final newHeight = constraints.maxHeight > 600
+                ? 600.0
+                : constraints.maxHeight;
+            // Tinggi sebenarnya akan diukur oleh Column di bawah
+          }
+        });
+
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
           ),
-
-          // ── Level EXPANDED: foto slideshow besar ──
-          if (isExpanded) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.82,
+          ),
+          child: _MeasuredColumn(
+            key: ValueKey(_selectedPlace?.id ?? 0),
+            onHeightChanged: (h) {
+              if (!mounted) return;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted) return;
+                if ((h - _bottomSheetHeight).abs() > 1) {
+                  setState(() => _bottomSheetHeight = h);
+                }
+                if (!_isExpanded && _normalSheetHeight == 0 && h > 0) {
+                  setState(() => _normalSheetHeight = h);
+                }
+              });
+            },
+            child: SingleChildScrollView(
+              physics: _isExpanded
+                  ? const ClampingScrollPhysics()
+                  : const NeverScrollableScrollPhysics(),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: SizedBox(
-                      height: 180,
-                      child: PageView.builder(
-                        itemCount: place.photos.isNotEmpty ? place.photos.length : 1,
-                        onPageChanged: (i) => setState(() => _slidePage = i),
-                        itemBuilder: (_, i) {
-                          if (place.photos.isEmpty) {
-                            return Container(
-                              color: _getCategoryColor(place.category?.name).withOpacity(0.1),
-                              child: Icon(
-                                _getCategoryIcon(place.category?.name ?? '', place.name),
-                                size: 60,
-                                color: _getCategoryColor(place.category?.name),
+                  // ── Handle bar ──────────────────────────
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+
+                  // ── Foto: animasi crossfade kecil ↔ besar
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: AnimatedCrossFade(
+                      duration: const Duration(milliseconds: 350),
+                      firstCurve: Curves.easeInOut,
+                      secondCurve: Curves.easeInOut,
+                      sizeCurve: Curves.easeInOut,
+                      crossFadeState: _isExpanded
+                          ? CrossFadeState.showSecond
+                          : CrossFadeState.showFirst,
+                      firstChild: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: place.photos.isNotEmpty
+                                ? Image.network(
+                                    place.photos[0],
+                                    width: 80,
+                                    height: 80,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      width: 80,
+                                      height: 80,
+                                      color: _getCategoryColor(
+                                        place.category?.name,
+                                      ).withOpacity(0.1),
+                                      child: Center(
+                                        child: Icon(
+                                          _getCategoryIcon(
+                                            place.category?.name ?? '',
+                                            place.name,
+                                          ),
+                                          size: 32,
+                                          color: _getCategoryColor(
+                                            place.category?.name,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : Container(
+                                    width: 80,
+                                    height: 80,
+                                    decoration: BoxDecoration(
+                                      color: _getCategoryColor(
+                                        place.category?.name,
+                                      ).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Center(
+                                      child: Icon(
+                                        _getCategoryIcon(
+                                          place.category?.name ?? '',
+                                          place.name,
+                                        ),
+                                        size: 32,
+                                        color: _getCategoryColor(
+                                          place.category?.name,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildNameSection(place)),
+                        ],
+                      ),
+                      secondChild: Builder(
+                        builder: (_) {
+                          final reviewPhotos = _getReviewPhotos(place);
+                          final allPhotos = <String>[
+                            ...place.photos,
+                            ...reviewPhotos,
+                          ];
+                          final reviewCount = reviewPhotos.length;
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: SizedBox(
+                                  height: 180,
+                                  width: double.infinity,
+                                  child: allPhotos.isNotEmpty
+                                                ? Stack(
+                                                    children: [
+                                                      // Bungkus PageView supaya swipe horizontal tidak dikonsumsi GestureDetector parent
+                                                      Positioned.fill(
+                                        child: PageView.builder(
+                                          controller: _slideController,
+                                          itemCount: allPhotos.length,
+                                          onPageChanged: (i) =>
+                                              setState(() => _slidePage = i),
+                                          itemBuilder: (_, i) => Image.network(
+                                            allPhotos[i],
+                                            fit: BoxFit.cover,
+                                            width: double.infinity,
+                                            height: 180,
+                                            errorBuilder: (_, __, ___) =>
+                                                Container(
+                                              color: _getCategoryColor(
+                                                place.category?.name,
+                                              ).withOpacity(0.1),
+                                              child: Center(
+                                                child: Icon(
+                                                  _getCategoryIcon(
+                                                    place.category?.name ?? '',
+                                                    place.name,
+                                                  ),
+                                                  size: 60,
+                                                  color: _getCategoryColor(
+                                                    place.category?.name,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                            // Badge "+N dari ulasan"
+                                            if (reviewCount > 0)
+                                              Positioned(
+                                                top: 8,
+                                                right: 8,
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.black54,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          12,
+                                                        ),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      const Icon(
+                                                        Icons.photo_library,
+                                                        size: 12,
+                                                        color: Colors.white,
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        '+$reviewCount dari ulasan',
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 11,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            // Indikator slide + counter
+                                            if (allPhotos.length > 1)
+                                              Positioned(
+                                                bottom: 8,
+                                                left: 0,
+                                                right: 0,
+                                                child: Row(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 8,
+                                                            vertical: 4,
+                                                          ),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.black45,
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              12,
+                                                            ),
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        children: [
+                                                          ...List.generate(
+                                                            allPhotos.length,
+                                                            (
+                                                              i,
+                                                            ) => AnimatedContainer(
+                                                              duration:
+                                                                  const Duration(
+                                                                    milliseconds:
+                                                                        200,
+                                                                  ),
+                                                              margin:
+                                                                  const EdgeInsets.symmetric(
+                                                                    horizontal:
+                                                                        3,
+                                                                  ),
+                                                              width:
+                                                                  _slidePage ==
+                                                                      i
+                                                                  ? 16
+                                                                  : 8,
+                                                              height: 8,
+                                                              decoration: BoxDecoration(
+                                                                color:
+                                                                    _slidePage ==
+                                                                        i
+                                                                    ? Colors
+                                                                          .white
+                                                                    : Colors
+                                                                          .white54,
+                                                                borderRadius:
+                                                                    BorderRadius.circular(
+                                                                      4,
+                                                                    ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                            width: 6,
+                                                          ),
+                                                          Text(
+                                                            '${_slidePage + 1}/${allPhotos.length}',
+                                                            style:
+                                                                const TextStyle(
+                                                                  color: Colors
+                                                                      .white,
+                                                                  fontSize: 11,
+                                                                ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                          ],
+                                        )
+                                      // Tidak ada foto — placeholder kategori
+                                      : Container(
+                                          color: _getCategoryColor(
+                                            place.category?.name,
+                                          ).withOpacity(0.1),
+                                          child: Center(
+                                            child: Icon(
+                                              _getCategoryIcon(
+                                                place.category?.name ?? '',
+                                                place.name,
+                                              ),
+                                              size: 60,
+                                              color: _getCategoryColor(
+                                                place.category?.name,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                ),
                               ),
-                            );
-                          }
-                          return Image.network(
-                            place.photos[i],
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            errorBuilder: (_, __, ___) => Container(
-                              color: _getCategoryColor(place.category?.name).withOpacity(0.1),
-                              child: Icon(
-                                _getCategoryIcon(place.category?.name ?? '', place.name),
-                                size: 60,
-                                color: _getCategoryColor(place.category?.name),
-                              ),
-                            ),
+                              const SizedBox(height: 12),
+                              _buildNameSection(place),
+                            ],
                           );
                         },
                       ),
                     ),
                   ),
-                  if (place.photos.length > 1) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(
-                        place.photos.length,
-                        (i) => AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          margin: const EdgeInsets.symmetric(horizontal: 3),
-                          width: _slidePage == i ? 16 : 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: _slidePage == i
-                                ? const Color(0xFF1E3A5F)
-                                : Colors.grey.shade300,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
 
-          // ── Info utama ────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Foto kotak kecil — hanya saat TIDAK expanded
-                    if (!isExpanded) ...[
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: place.photos.isNotEmpty
-                            ? Image.network(
-                                place.photos[0],
-                                width: 80,
-                                height: 80,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
-                                  width: 80,
-                                  height: 80,
-                                  color: _getCategoryColor(place.category?.name).withOpacity(0.1),
-                                  child: Icon(
-                                    _getCategoryIcon(place.category?.name ?? '', place.name),
-                                    size: 32,
-                                    color: _getCategoryColor(place.category?.name),
-                                  ),
-                                ),
-                              )
-                            : Container(
-                                width: 80,
-                                height: 80,
-                                color: _getCategoryColor(place.category?.name).withOpacity(0.1),
-                                child: Icon(
-                                  _getCategoryIcon(place.category?.name ?? '', place.name),
-                                  size: 32,
-                                  color: _getCategoryColor(place.category?.name),
-                                ),
-                              ),
-                      ),
-                      const SizedBox(width: 12),
-                    ],
-                    // Nama, kategori, rating
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            place.name,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF1E3A5F),
+                  // ── Detail info ─────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.location_on,
+                              size: 14,
+                              color: Colors.red,
                             ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (place.category != null) ...[
-                            const SizedBox(height: 4),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: _getCategoryColor(place.category!.name).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
+                            const SizedBox(width: 6),
+                            Expanded(
                               child: Text(
-                                place.category!.name,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: _getCategoryColor(place.category!.name),
-                                  fontWeight: FontWeight.w600,
+                                place.address,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black87,
                                 ),
                               ),
                             ),
                           ],
-                          const SizedBox(height: 6),
+                        ),
+                        if (place.phone.isNotEmpty) ...[
+                          const SizedBox(height: 4),
                           Row(
                             children: [
-                              const Icon(Icons.star, size: 14, color: Colors.amber),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${place.avgRating.toStringAsFixed(1)} (${place.reviewCount})',
-                                style: const TextStyle(fontSize: 12),
+                              const Icon(
+                                Icons.phone,
+                                size: 14,
+                                color: Colors.green,
                               ),
-                              const SizedBox(width: 10),
-                              Consumer<PlaceProvider>(
-                                builder: (_, pp, __) {
-                                  final dist = pp.distanceTo(place.lat, place.lng);
-                                  if (dist == null) return const SizedBox.shrink();
-                                  return Row(
-                                    children: [
-                                      const Icon(Icons.directions_walk, size: 14, color: Colors.grey),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        dist < 1000
-                                            ? '${dist.toStringAsFixed(0)} m'
-                                            : '${(dist / 1000).toStringAsFixed(1)} km',
-                                        style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                      ),
-                                    ],
-                                  );
-                                },
+                              const SizedBox(width: 6),
+                              Text(
+                                place.phone,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black87,
+                                ),
                               ),
                             ],
                           ),
                         ],
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 12),
-
-                // ── Alamat (selalu tampil) ────────────
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.location_on, size: 14, color: Colors.red),
-                    const SizedBox(width: 6),
-                    Expanded(child: Text(place.address, style: const TextStyle(fontSize: 12, color: Colors.black87))),
-                  ],
-                ),
-
-                // ── Telepon ───────────────────────────
-                if (place.phone.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Row(children: [
-                    const Icon(Icons.phone, size: 14, color: Colors.green),
-                    const SizedBox(width: 6),
-                    Text(place.phone, style: const TextStyle(fontSize: 12, color: Colors.black87)),
-                  ]),
-                ],
-
-                // ── Website ───────────────────────────
-                if (place.website.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Row(children: [
-                    const Icon(Icons.language, size: 14, color: Colors.blue),
-                    const SizedBox(width: 6),
-                    Expanded(child: Text(place.website, style: const TextStyle(fontSize: 12, color: Colors.blue), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                  ]),
-                ],
-
-                // ── Jam buka ──────────────────────────
-                if (place.openingHours.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  GestureDetector(
-                    onTap: () => setState(() => _isHoursExpanded = !_isHoursExpanded),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey.shade200),
-                      ),
-                      child: Column(children: [
-                        Row(children: [
-                          Icon(Icons.access_time, size: 14, color: isOpen ? Colors.green : Colors.red),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: isOpen ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(isOpen ? 'Buka' : 'Tutup', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isOpen ? Colors.green : Colors.red)),
+                        if (place.website.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.language,
+                                size: 14,
+                                color: Colors.blue,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  place.website,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.blue,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 6),
-                          Expanded(child: Text(todayHours, style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                          Icon(_isHoursExpanded ? Icons.expand_less : Icons.expand_more, size: 16, color: Colors.grey),
-                        ]),
-                        if (_isHoursExpanded) ...[
-                          const SizedBox(height: 8),
-                          const Divider(height: 1),
-                          const SizedBox(height: 8),
-                          ...place.openingHours.map((h) => Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2),
-                            child: Row(children: [const SizedBox(width: 20), Text(h, style: const TextStyle(fontSize: 12))]),
-                          )),
                         ],
-                      ]),
-                    ),
-                  ),
-                ],
-
-                // ── Deskripsi ─────────────────────────
-                if (place.description.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  RichText(
-                    text: TextSpan(
-                      style: const TextStyle(fontSize: 12, color: Colors.black87, height: 1.5),
-                      children: [
-                        TextSpan(text: shortDesc),
-                        if (place.description.length > 120)
-                          const TextSpan(
-                            text: ' lihat lebih lengkap di detail lokasi',
-                            style: TextStyle(color: Color(0xFF1E3A5F), fontStyle: FontStyle.italic),
+                        if (place.openingHours.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          GestureDetector(
+                            onTap: () => setState(
+                              () => _isHoursExpanded = !_isHoursExpanded,
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.grey.shade200),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.access_time,
+                                        size: 14,
+                                        color: isOpen
+                                            ? Colors.green
+                                            : Colors.red,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: isOpen
+                                              ? Colors.green.withOpacity(0.1)
+                                              : Colors.red.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          isOpen ? 'Buka' : 'Tutup',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: isOpen
+                                                ? Colors.green
+                                                : Colors.red,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          todayHours,
+                                          style: const TextStyle(fontSize: 12),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      Icon(
+                                        _isHoursExpanded
+                                            ? Icons.expand_less
+                                            : Icons.expand_more,
+                                        size: 16,
+                                        color: Colors.grey,
+                                      ),
+                                    ],
+                                  ),
+                                  if (_isHoursExpanded) ...[
+                                    const SizedBox(height: 8),
+                                    const Divider(height: 1),
+                                    const SizedBox(height: 8),
+                                    ...place.openingHours.map(
+                                      (h) => Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 2,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const SizedBox(width: 20),
+                                            Text(
+                                              h,
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
                           ),
+                        ],
+                        if (place.description.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          RichText(
+                            text: TextSpan(
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black87,
+                                height: 1.5,
+                              ),
+                              children: [
+                                TextSpan(text: shortDesc),
+                                if (place.description.length > 120)
+                                  const TextSpan(
+                                    text:
+                                        ' lihat lebih lengkap di detail lokasi',
+                                    style: TextStyle(
+                                      color: Color(0xFF1E3A5F),
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                icon: _isLoadingRoute
+                                    ? const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Icon(Icons.directions, size: 18),
+                                label: Text(
+                                  _isLoadingRoute
+                                      ? 'Menghitung...'
+                                      : 'Tampilkan Rute',
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF1E3A5F),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                onPressed: _isLoadingRoute
+                                    ? null
+                                    : () => _getRoute(place),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                icon: const Icon(Icons.info_outline, size: 18),
+                                label: const Text('Lihat Detail'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFF1E3A5F),
+                                  side: const BorderSide(
+                                    color: Color(0xFF1E3A5F),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                onPressed: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        DetailScreen(placeId: place.id),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 
-                const SizedBox(height: 12),
-
-                // ── Tombol aksi ───────────────────────
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        icon: _isLoadingRoute
-                            ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.directions, size: 18),
-                        label: Text(_isLoadingRoute ? 'Menghitung...' : 'Tampilkan Rute'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1E3A5F),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        onPressed: _isLoadingRoute ? null : () => _getRoute(place),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.info_outline, size: 18),
-                        label: const Text('Lihat Detail'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF1E3A5F),
-                          side: const BorderSide(color: Color(0xFF1E3A5F)),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => DetailScreen(placeId: place.id)),
-                        ),
-                      ),
-                    ),
-                  ],
+  // ── Helper: nama + kategori + rating ────────────────────────
+  Widget _buildNameSection(PlaceModel place) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          place.name,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF1E3A5F),
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        if (place.category != null) ...[
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: _getCategoryColor(place.category!.name).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _getCategoryIcon(place.category!.name, place.name),
+                  size: 12,
+                  color: _getCategoryColor(place.category!.name),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  place.category!.name,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: _getCategoryColor(place.category!.name),
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
           ),
         ],
-      ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            const Icon(Icons.star, size: 14, color: Colors.amber),
+            const SizedBox(width: 4),
+            Text(
+              '${place.avgRating.toStringAsFixed(1)} (${place.reviewCount})',
+              style: const TextStyle(fontSize: 12),
+            ),
+            const SizedBox(width: 10),
+            Consumer<PlaceProvider>(
+              builder: (_, pp, __) {
+                final dist = pp.distanceTo(place.lat, place.lng);
+                if (dist == null) return const SizedBox.shrink();
+                return Row(
+                  children: [
+                    const Icon(
+                      Icons.directions_walk,
+                      size: 14,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      dist < 1000
+                          ? '${dist.toStringAsFixed(0)} m'
+                          : '${(dist / 1000).toStringAsFixed(1)} km',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
 
 // ── Legend Item ─────────────────────────────────────────────
 class _LegendItem extends StatelessWidget {
-  final Color    color;
-  final String   label;
+  final Color color;
+  final String label;
   final IconData icon;
-  final bool     isIbadah;
+  final bool isIbadah;
 
   const _LegendItem({
     required this.color,
@@ -1054,9 +1471,9 @@ class _LegendItem extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 22, height: 22,
-                decoration: BoxDecoration(
-                    color: color, shape: BoxShape.circle),
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
                 child: Icon(icon, size: 13, color: Colors.white),
               ),
               const SizedBox(width: 6),
@@ -1069,16 +1486,66 @@ class _LegendItem extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: const [
                 SizedBox(width: 28),
-                Icon(Icons.mosque,        size: 13, color: Colors.black54),
+                Icon(Icons.mosque, size: 13, color: Colors.black54),
                 SizedBox(width: 6),
-                Icon(Icons.church,        size: 13, color: Colors.black54),
+                Icon(Icons.church, size: 13, color: Colors.black54),
                 SizedBox(width: 6),
-                Icon(Icons.temple_hindu,  size: 13, color: Colors.black54),
+                Icon(Icons.temple_hindu, size: 13, color: Colors.black54),
               ],
             ),
           ],
         ],
       ),
     );
+  }
+}
+
+class _MeasuredColumn extends StatefulWidget {
+  final Widget child;
+  final void Function(double) onHeightChanged;
+
+  const _MeasuredColumn({
+    super.key,
+    required this.child,
+    required this.onHeightChanged,
+  });
+  @override
+  State<_MeasuredColumn> createState() => _MeasuredColumnState();
+}
+
+class _MeasuredColumnState extends State<_MeasuredColumn> {
+  final GlobalKey _key = GlobalKey();
+  double _lastHeight = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastHeight = 0; // reset saat recreate karena key berubah
+  }
+
+  void _measure() {
+    final ctx = _key.currentContext;
+    if (ctx != null) {
+      final box = ctx.findRenderObject() as RenderBox?;
+      if (box != null && box.hasSize) {
+        final h = box.size.height;
+        if ((h - _lastHeight).abs() > 0.5) {
+          _lastHeight = h;
+          widget.onHeightChanged(h);
+        }
+      }
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _MeasuredColumn oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+    return Container(key: _key, child: widget.child);
   }
 }
