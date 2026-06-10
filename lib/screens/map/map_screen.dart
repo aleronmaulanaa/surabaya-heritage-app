@@ -34,6 +34,7 @@ class _MapScreenState extends State<MapScreen> {
   bool _isExpanded = false;
   double _dragOffset = 0;
   double _normalSheetHeight = 0;
+  double _overscrollAccum = 0;
   final PageController _slideController = PageController();
 
   static const CameraPosition _surabayaCenter = CameraPosition(
@@ -816,10 +817,33 @@ class _MapScreenState extends State<MapScreen> {
             ),
             // ── Scrollable content ──────────────────
             Flexible(
-              child: SingleChildScrollView(
-                physics: _isExpanded
-                    ? const ClampingScrollPhysics()
-                    : const NeverScrollableScrollPhysics(),
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (notification) {
+                  if (!_isExpanded) return false;
+                  if (notification is ScrollUpdateNotification) {
+                    if (notification.metrics.pixels <= 0 &&
+                        (notification.dragDetails?.delta.dy ?? 0) > 0) {
+                      _overscrollAccum += notification.dragDetails!.delta.dy;
+                      if (_overscrollAccum > 60) {
+                        _overscrollAccum = 0;
+                        setState(() {
+                          _isExpanded = false;
+                          _dragOffset = 0;
+                        });
+                        return true;
+                      }
+                    } else {
+                      _overscrollAccum = 0;
+                    }
+                  } else if (notification is ScrollEndNotification) {
+                    _overscrollAccum = 0;
+                  }
+                  return false;
+                },
+                child: SingleChildScrollView(
+                  physics: _isExpanded
+                      ? const BouncingScrollPhysics()
+                      : const NeverScrollableScrollPhysics(),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1338,6 +1362,7 @@ class _MapScreenState extends State<MapScreen> {
             ],
           ),
         ),
+      ),
       ),
           ],
         ),

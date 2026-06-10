@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/place_provider.dart';
 import '../../providers/auth_provider.dart';
@@ -134,12 +135,15 @@ class _HomeTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
-      child: SafeArea(
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.light,
+        child: SafeArea(
+        top: false,
         child: Column(
           children: [
             // Header
             Container(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              padding: EdgeInsets.fromLTRB(16, MediaQuery.of(context).padding.top + 16, 16, 0),
               color: const Color(0xFF1E3A5F),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -202,6 +206,7 @@ class _HomeTab extends StatelessWidget {
             Expanded(child: _PlaceList(scrollController: scrollController)),
           ],
         ),
+      ),
       ),
     );
   }
