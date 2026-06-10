@@ -31,6 +31,7 @@ class _MapScreenState extends State<MapScreen> {
   bool _isHoursExpanded = false;
   double _bottomSheetHeight = 0;
   int _slidePage = 0;
+  Offset? _slidePhotoDragStart;
   bool _isExpanded = false;
   double _dragOffset = 0;
   double _normalSheetHeight = 0;
@@ -717,7 +718,7 @@ class _MapScreenState extends State<MapScreen> {
                 curve: Curves.easeOut,
                 offset: Offset(0, _dragOffset),
                 child: GestureDetector(
-                  behavior: HitTestBehavior.deferToChild,
+                  behavior: HitTestBehavior.opaque,
                   onVerticalDragUpdate: (details) {
                     setState(() {
                       _dragOffset = (_dragOffset + details.delta.dy / 300)
@@ -726,15 +727,12 @@ class _MapScreenState extends State<MapScreen> {
                   },
                   onVerticalDragEnd: (details) {
                     final velocity = details.primaryVelocity ?? 0;
-                    // Swipe ke atas → expand
                     if (velocity < -300 && !_isExpanded) {
                       setState(() {
                         _isExpanded = true;
                         _dragOffset = 0;
                       });
-                    }
-                    // Swipe ke bawah → collapse atau tutup
-                    else if (velocity > 300) {
+                    } else if (velocity > 300) {
                       if (_isExpanded) {
                         setState(() {
                           _isExpanded = false;
@@ -745,9 +743,7 @@ class _MapScreenState extends State<MapScreen> {
                       } else {
                         setState(() => _dragOffset = 0);
                       }
-                    }
-                    // Drag pelan
-                    else {
+                    } else {
                       if (_dragOffset > 0.3) {
                         _closeBottomSheet();
                       } else {
@@ -772,594 +768,582 @@ class _MapScreenState extends State<MapScreen> {
         ? '${place.description.substring(0, 120)}...'
         : place.description;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Update tinggi setelah render — untuk posisi tombol pusatkan
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            final newHeight = constraints.maxHeight > 600
-                ? 600.0
-                : constraints.maxHeight;
-            // Tinggi sebenarnya akan diukur oleh Column di bawah
-          }
-        });
-
-        return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
-          ),
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.82,
-          ),
-          child: _MeasuredColumn(
-            key: ValueKey(_selectedPlace?.id ?? 0),
-            onHeightChanged: (h) {
-              if (!mounted) return;
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (!mounted) return;
-                if ((h - _bottomSheetHeight).abs() > 1) {
-                  setState(() => _bottomSheetHeight = h);
-                }
-                if (!_isExpanded && _normalSheetHeight == 0 && h > 0) {
-                  setState(() => _normalSheetHeight = h);
-                }
-              });
-            },
-            child: SingleChildScrollView(
-              physics: _isExpanded
-                  ? const ClampingScrollPhysics()
-                  : const NeverScrollableScrollPhysics(),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Handle bar ──────────────────────────
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
+      ),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.82,
+      ),
+      child: _MeasuredColumn(
+        key: ValueKey(_selectedPlace?.id ?? 0),
+        onHeightChanged: (h) {
+          if (!mounted) return;
+          final needsHeightUpdate = (h - _bottomSheetHeight).abs() > 1;
+          final needsNormalUpdate =
+              !_isExpanded && _normalSheetHeight == 0 && h > 0;
+          if (!needsHeightUpdate && !needsNormalUpdate) return;
+          setState(() {
+            if (needsHeightUpdate) _bottomSheetHeight = h;
+            if (needsNormalUpdate) _normalSheetHeight = h;
+          });
+        },
+        child: SingleChildScrollView(
+          physics: _isExpanded
+              ? const ClampingScrollPhysics()
+              : const NeverScrollableScrollPhysics(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Handle bar ──────────────────────────
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
                   ),
+                ),
+              ),
 
-                  // ── Foto: animasi crossfade kecil ↔ besar
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: AnimatedCrossFade(
-                      duration: const Duration(milliseconds: 350),
-                      firstCurve: Curves.easeInOut,
-                      secondCurve: Curves.easeInOut,
-                      sizeCurve: Curves.easeInOut,
-                      crossFadeState: _isExpanded
-                          ? CrossFadeState.showSecond
-                          : CrossFadeState.showFirst,
-                      firstChild: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: place.photos.isNotEmpty
-                                ? Image.network(
-                                    place.photos[0],
-                                    width: 80,
-                                    height: 80,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => Container(
-                                      width: 80,
-                                      height: 80,
-                                      color: _getCategoryColor(
-                                        place.category?.name,
-                                      ).withOpacity(0.1),
-                                      child: Center(
-                                        child: Icon(
-                                          _getCategoryIcon(
-                                            place.category?.name ?? '',
-                                            place.name,
-                                          ),
-                                          size: 32,
-                                          color: _getCategoryColor(
-                                            place.category?.name,
-                                          ),
-                                        ),
+              // ── Foto: animasi crossfade kecil ↔ besar
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: AnimatedCrossFade(
+                  duration: const Duration(milliseconds: 350),
+                  firstCurve: Curves.easeInOut,
+                  secondCurve: Curves.easeInOut,
+                  sizeCurve: Curves.easeInOut,
+                  crossFadeState: _isExpanded
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+                  firstChild: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: place.photos.isNotEmpty
+                            ? Image.network(
+                                place.photos[0],
+                                width: 80,
+                                height: 80,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  width: 80,
+                                  height: 80,
+                                  color: _getCategoryColor(
+                                    place.category?.name,
+                                  ).withOpacity(0.1),
+                                  child: Center(
+                                    child: Icon(
+                                      _getCategoryIcon(
+                                        place.category?.name ?? '',
+                                        place.name,
                                       ),
-                                    ),
-                                  )
-                                : Container(
-                                    width: 80,
-                                    height: 80,
-                                    decoration: BoxDecoration(
+                                      size: 32,
                                       color: _getCategoryColor(
                                         place.category?.name,
-                                      ).withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Center(
-                                      child: Icon(
-                                        _getCategoryIcon(
-                                          place.category?.name ?? '',
-                                          place.name,
-                                        ),
-                                        size: 32,
-                                        color: _getCategoryColor(
-                                          place.category?.name,
-                                        ),
                                       ),
                                     ),
                                   ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(child: _buildNameSection(place)),
-                        ],
-                      ),
-                      secondChild: Builder(
-                        builder: (_) {
-                          final reviewPhotos = _getReviewPhotos(place);
-                          final allPhotos = <String>[
-                            ...place.photos,
-                            ...reviewPhotos,
-                          ];
-                          final reviewCount = reviewPhotos.length;
-
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: SizedBox(
-                                  height: 180,
-                                  width: double.infinity,
-                                  child: allPhotos.isNotEmpty
-                                                ? Stack(
-                                                    children: [
-                                                      // Bungkus PageView supaya swipe horizontal tidak dikonsumsi GestureDetector parent
-                                                      Positioned.fill(
-                                        child: PageView.builder(
-                                          controller: _slideController,
-                                          itemCount: allPhotos.length,
-                                          onPageChanged: (i) =>
-                                              setState(() => _slidePage = i),
-                                          itemBuilder: (_, i) => Image.network(
-                                            allPhotos[i],
-                                            fit: BoxFit.cover,
-                                            width: double.infinity,
-                                            height: 180,
-                                            errorBuilder: (_, __, ___) =>
-                                                Container(
-                                              color: _getCategoryColor(
-                                                place.category?.name,
-                                              ).withOpacity(0.1),
-                                              child: Center(
-                                                child: Icon(
-                                                  _getCategoryIcon(
-                                                    place.category?.name ?? '',
-                                                    place.name,
-                                                  ),
-                                                  size: 60,
-                                                  color: _getCategoryColor(
-                                                    place.category?.name,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                            // Badge "+N dari ulasan"
-                                            if (reviewCount > 0)
-                                              Positioned(
-                                                top: 8,
-                                                right: 8,
-                                                child: Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 8,
-                                                        vertical: 4,
-                                                      ),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.black54,
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          12,
-                                                        ),
-                                                  ),
-                                                  child: Row(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
-                                                    children: [
-                                                      const Icon(
-                                                        Icons.photo_library,
-                                                        size: 12,
-                                                        color: Colors.white,
-                                                      ),
-                                                      const SizedBox(width: 4),
-                                                      Text(
-                                                        '+$reviewCount dari ulasan',
-                                                        style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 11,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            // Indikator slide + counter
-                                            if (allPhotos.length > 1)
-                                              Positioned(
-                                                bottom: 8,
-                                                left: 0,
-                                                right: 0,
-                                                child: Row(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    Container(
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            horizontal: 8,
-                                                            vertical: 4,
-                                                          ),
-                                                      decoration: BoxDecoration(
-                                                        color: Colors.black45,
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              12,
-                                                            ),
-                                                      ),
-                                                      child: Row(
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        children: [
-                                                          ...List.generate(
-                                                            allPhotos.length,
-                                                            (
-                                                              i,
-                                                            ) => AnimatedContainer(
-                                                              duration:
-                                                                  const Duration(
-                                                                    milliseconds:
-                                                                        200,
-                                                                  ),
-                                                              margin:
-                                                                  const EdgeInsets.symmetric(
-                                                                    horizontal:
-                                                                        3,
-                                                                  ),
-                                                              width:
-                                                                  _slidePage ==
-                                                                      i
-                                                                  ? 16
-                                                                  : 8,
-                                                              height: 8,
-                                                              decoration: BoxDecoration(
-                                                                color:
-                                                                    _slidePage ==
-                                                                        i
-                                                                    ? Colors
-                                                                          .white
-                                                                    : Colors
-                                                                          .white54,
-                                                                borderRadius:
-                                                                    BorderRadius.circular(
-                                                                      4,
-                                                                    ),
-                                                              ),
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                            width: 6,
-                                                          ),
-                                                          Text(
-                                                            '${_slidePage + 1}/${allPhotos.length}',
-                                                            style:
-                                                                const TextStyle(
-                                                                  color: Colors
-                                                                      .white,
-                                                                  fontSize: 11,
-                                                                ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                          ],
-                                        )
-                                      // Tidak ada foto — placeholder kategori
-                                      : Container(
-                                          color: _getCategoryColor(
-                                            place.category?.name,
-                                          ).withOpacity(0.1),
-                                          child: Center(
-                                            child: Icon(
-                                              _getCategoryIcon(
-                                                place.category?.name ?? '',
-                                                place.name,
-                                              ),
-                                              size: 60,
-                                              color: _getCategoryColor(
-                                                place.category?.name,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
+                                ),
+                              )
+                            : Container(
+                                width: 80,
+                                height: 80,
+                                decoration: BoxDecoration(
+                                  color: _getCategoryColor(
+                                    place.category?.name,
+                                  ).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Center(
+                                  child: Icon(
+                                    _getCategoryIcon(
+                                      place.category?.name ?? '',
+                                      place.name,
+                                    ),
+                                    size: 32,
+                                    color: _getCategoryColor(
+                                      place.category?.name,
+                                    ),
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 12),
-                              _buildNameSection(place),
-                            ],
-                          );
-                        },
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      Expanded(child: _buildNameSection(place)),
+                    ],
                   ),
+                  secondChild: StatefulBuilder(
+                    builder: (_, setSlideState) {
+                      final reviewPhotos = _getReviewPhotos(place);
+                      final allPhotos = <String>[
+                        ...place.photos,
+                        ...reviewPhotos,
+                      ];
+                      final reviewCount = reviewPhotos.length;
 
-                  // ── Detail info ─────────────────────────
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                      if (allPhotos.isEmpty) {
+                        return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(
-                              Icons.location_on,
-                              size: 14,
-                              color: Colors.red,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                place.address,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (place.phone.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.phone,
-                                size: 14,
-                                color: Colors.green,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                place.phone,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                        if (place.website.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.language,
-                                size: 14,
-                                color: Colors.blue,
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  place.website,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.blue,
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                height: 180,
+                                width: double.infinity,
+                                color: _getCategoryColor(
+                                  place.category?.name,
+                                ).withOpacity(0.1),
+                                child: Center(
+                                  child: Icon(
+                                    _getCategoryIcon(
+                                      place.category?.name ?? '',
+                                      place.name,
+                                    ),
+                                    size: 60,
+                                    color: _getCategoryColor(
+                                      place.category?.name,
+                                    ),
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                            ],
-                          ),
-                        ],
-                        if (place.openingHours.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          GestureDetector(
-                            onTap: () => setState(
-                              () => _isHoursExpanded = !_isHoursExpanded,
                             ),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade50,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.grey.shade200),
-                              ),
-                              child: Column(
+                            const SizedBox(height: 12),
+                            _buildNameSection(place),
+                          ],
+                        );
+                      }
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Foto slideshow
+                          Listener(
+                            behavior: HitTestBehavior.opaque,
+                            onPointerDown: (event) {
+                              _slidePhotoDragStart = event.position;
+                            },
+                            onPointerUp: (event) {
+                              final start = _slidePhotoDragStart;
+                              _slidePhotoDragStart = null;
+                              if (start == null) return;
+                              final delta = event.position - start;
+                              if (delta.dx.abs() <= delta.dy.abs() ||
+                                  delta.dx.abs() < 24) {
+                                return;
+                              }
+                              if (delta.dx < 0 &&
+                                  _slidePage < allPhotos.length - 1) {
+                                setSlideState(() => _slidePage++);
+                                setState(() {});
+                              } else if (delta.dx > 0 && _slidePage > 0) {
+                                setSlideState(() => _slidePage--);
+                                setState(() {});
+                              }
+                            },
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Stack(
                                 children: [
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.access_time,
-                                        size: 14,
-                                        color: isOpen
-                                            ? Colors.green
-                                            : Colors.red,
+                                  // Foto utama dengan AnimatedSwitcher
+                                  AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 300),
+                                    transitionBuilder: (child, animation) =>
+                                        FadeTransition(
+                                          opacity: animation,
+                                          child: child,
+                                        ),
+                                    child: Image.network(
+                                      allPhotos[_slidePage],
+                                      key: ValueKey(_slidePage),
+                                      height: 180,
+                                      width: double.infinity,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Container(
+                                        height: 180,
+                                        color: _getCategoryColor(
+                                          place.category?.name,
+                                        ).withOpacity(0.1),
+                                        child: Center(
+                                          child: Icon(
+                                            _getCategoryIcon(
+                                              place.category?.name ?? '',
+                                              place.name,
+                                            ),
+                                            size: 60,
+                                            color: _getCategoryColor(
+                                              place.category?.name,
+                                            ),
+                                          ),
+                                        ),
                                       ),
-                                      const SizedBox(width: 6),
-                                      Container(
+                                    ),
+                                  ),
+                                  // Badge "+N dari ulasan"
+                                  if (reviewCount > 0)
+                                    Positioned(
+                                      top: 8,
+                                      right: 8,
+                                      child: Container(
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 2,
+                                          horizontal: 8,
+                                          vertical: 4,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: isOpen
-                                              ? Colors.green.withOpacity(0.1)
-                                              : Colors.red.withOpacity(0.1),
+                                          color: Colors.black54,
                                           borderRadius: BorderRadius.circular(
-                                            4,
+                                            12,
                                           ),
-                                        ),
-                                        child: Text(
-                                          isOpen ? 'Buka' : 'Tutup',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: isOpen
-                                                ? Colors.green
-                                                : Colors.red,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          todayHours,
-                                          style: const TextStyle(fontSize: 12),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      Icon(
-                                        _isHoursExpanded
-                                            ? Icons.expand_less
-                                            : Icons.expand_more,
-                                        size: 16,
-                                        color: Colors.grey,
-                                      ),
-                                    ],
-                                  ),
-                                  if (_isHoursExpanded) ...[
-                                    const SizedBox(height: 8),
-                                    const Divider(height: 1),
-                                    const SizedBox(height: 8),
-                                    ...place.openingHours.map(
-                                      (h) => Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 2,
                                         ),
                                         child: Row(
+                                          mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            const SizedBox(width: 20),
+                                            const Icon(
+                                              Icons.photo_library,
+                                              size: 12,
+                                              color: Colors.white,
+                                            ),
+                                            const SizedBox(width: 4),
                                             Text(
-                                              h,
+                                              '+$reviewCount dari ulasan',
                                               style: const TextStyle(
-                                                fontSize: 12,
+                                                color: Colors.white,
+                                                fontSize: 11,
                                               ),
                                             ),
                                           ],
                                         ),
                                       ),
                                     ),
-                                  ],
+                                  // Indikator dots + counter
+                                  if (allPhotos.length > 1)
+                                    Positioned(
+                                      bottom: 8,
+                                      left: 0,
+                                      right: 0,
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black45,
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                ...List.generate(
+                                                  allPhotos.length,
+                                                  (i) => AnimatedContainer(
+                                                    duration: const Duration(
+                                                      milliseconds: 200,
+                                                    ),
+                                                    margin:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 3,
+                                                        ),
+                                                    width: _slidePage == i
+                                                        ? 16
+                                                        : 8,
+                                                    height: 8,
+                                                    decoration: BoxDecoration(
+                                                      color: _slidePage == i
+                                                          ? Colors.white
+                                                          : Colors.white54,
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            4,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  '${_slidePage + 1}/${allPhotos.length}',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
                           ),
+                          const SizedBox(height: 12),
+                          _buildNameSection(place),
                         ],
-                        if (place.description.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          RichText(
-                            text: TextSpan(
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.black87,
-                                height: 1.5,
-                              ),
-                              children: [
-                                TextSpan(text: shortDesc),
-                                if (place.description.length > 120)
-                                  const TextSpan(
-                                    text:
-                                        ' lihat lebih lengkap di detail lokasi',
-                                    style: TextStyle(
-                                      color: Color(0xFF1E3A5F),
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                  ),
-                              ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+
+              // ── Detail info ─────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.location_on,
+                          size: 14,
+                          color: Colors.red,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            place.address,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black87,
                             ),
                           ),
-                        ],
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                icon: _isLoadingRoute
-                                    ? const SizedBox(
-                                        width: 14,
-                                        height: 14,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : const Icon(Icons.directions, size: 18),
-                                label: Text(
-                                  _isLoadingRoute
-                                      ? 'Menghitung...'
-                                      : 'Tampilkan Rute',
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF1E3A5F),
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                ),
-                                onPressed: _isLoadingRoute
-                                    ? null
-                                    : () => _getRoute(place),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                icon: const Icon(Icons.info_outline, size: 18),
-                                label: const Text('Lihat Detail'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: const Color(0xFF1E3A5F),
-                                  side: const BorderSide(
-                                    color: Color(0xFF1E3A5F),
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                ),
-                                onPressed: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        DetailScreen(placeId: place.id),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
                         ),
                       ],
                     ),
-                  ),
-                ],
+                    if (place.phone.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.phone,
+                            size: 14,
+                            color: Colors.green,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            place.phone,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (place.website.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.language,
+                            size: 14,
+                            color: Colors.blue,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              place.website,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.blue,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (place.openingHours.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      GestureDetector(
+                        onTap: () => setState(
+                          () => _isHoursExpanded = !_isHoursExpanded,
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.access_time,
+                                    size: 14,
+                                    color: isOpen ? Colors.green : Colors.red,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isOpen
+                                          ? Colors.green.withOpacity(0.1)
+                                          : Colors.red.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      isOpen ? 'Buka' : 'Tutup',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: isOpen
+                                            ? Colors.green
+                                            : Colors.red,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      todayHours,
+                                      style: const TextStyle(fontSize: 12),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Icon(
+                                    _isHoursExpanded
+                                        ? Icons.expand_less
+                                        : Icons.expand_more,
+                                    size: 16,
+                                    color: Colors.grey,
+                                  ),
+                                ],
+                              ),
+                              if (_isHoursExpanded) ...[
+                                const SizedBox(height: 8),
+                                const Divider(height: 1),
+                                const SizedBox(height: 8),
+                                ...place.openingHours.map(
+                                  (h) => Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 2,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const SizedBox(width: 20),
+                                        Text(
+                                          h,
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (place.description.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      RichText(
+                        text: TextSpan(
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.black87,
+                            height: 1.5,
+                          ),
+                          children: [
+                            TextSpan(text: shortDesc),
+                            if (place.description.length > 120)
+                              const TextSpan(
+                                text: ' lihat lebih lengkap di detail lokasi',
+                                style: TextStyle(
+                                  color: Color(0xFF1E3A5F),
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            icon: _isLoadingRoute
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.directions, size: 18),
+                            label: Text(
+                              _isLoadingRoute
+                                  ? 'Menghitung...'
+                                  : 'Tampilkan Rute',
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1E3A5F),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            onPressed: _isLoadingRoute
+                                ? null
+                                : () => _getRoute(place),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.info_outline, size: 18),
+                            label: const Text('Lihat Detail'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF1E3A5F),
+                              side: const BorderSide(color: Color(0xFF1E3A5F)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => DetailScreen(placeId: place.id),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
