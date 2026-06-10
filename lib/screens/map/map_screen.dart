@@ -337,6 +337,18 @@ class _MapScreenState extends State<MapScreen> {
     _mapController?.animateCamera(
       CameraUpdate.newLatLng(LatLng(place.lat - 0.003, place.lng)),
     );
+    if (place.reviews.isEmpty) {
+      _fetchPlaceDetail(place.id);
+    }
+  }
+
+  Future<void> _fetchPlaceDetail(int placeId) async {
+    final provider = context.read<PlaceProvider>();
+    await provider.fetchPlaceDetail(placeId);
+    final detailed = provider.selectedPlace;
+    if (detailed != null && mounted && _selectedPlace?.id == placeId) {
+      setState(() => _selectedPlace = detailed);
+    }
   }
 
   void _closeBottomSheet() {
