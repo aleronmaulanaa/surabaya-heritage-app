@@ -37,6 +37,13 @@ class _MapScreenState extends State<MapScreen> {
   double _overscrollAccum = 0;
   final PageController _slideController = PageController();
 
+  // Navigation route preview
+  bool _showRoutePreview = false;
+  String _transportMode = 'driving';
+  double _routeDistance = 0;
+  double _routeDuration = 0;
+  List<Map<String, dynamic>> _routeSteps = [];
+
   static const CameraPosition _surabayaCenter = CameraPosition(
     target: LatLng(-7.2575, 112.7521),
     zoom: 13,
@@ -328,11 +335,15 @@ class _MapScreenState extends State<MapScreen> {
       _selectedPlace = place;
       _polylines = {};
       _showBottomSheet = true;
+      _showRoutePreview = false;
       _isHoursExpanded = false;
       _isExpanded = false;
       _slidePage = 0;
       _dragOffset = 0;
       _normalSheetHeight = 0;
+      _routeSteps = [];
+      _routeDistance = 0;
+      _routeDuration = 0;
     });
     _mapController?.animateCamera(
       CameraUpdate.newLatLng(LatLng(place.lat - 0.003, place.lng)),
@@ -354,11 +365,15 @@ class _MapScreenState extends State<MapScreen> {
   void _closeBottomSheet() {
     setState(() {
       _showBottomSheet = false;
+      _showRoutePreview = false;
       _polylines = {};
       _isExpanded = false;
       _bottomSheetHeight = 0;
       _dragOffset = 0;
       _normalSheetHeight = 0;
+      _routeSteps = [];
+      _routeDistance = 0;
+      _routeDuration = 0;
     });
     Future.delayed(const Duration(milliseconds: 350), () {
       if (mounted) setState(() => _selectedPlace = null);
@@ -366,7 +381,18 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   // ── Routing via OSRM ───────────────────────────────────────
-  Future<void> _getRoute(PlaceModel destination) async {
+  String _osrmProfile(String mode) {
+    switch (mode) {
+      case 'walking':
+        return 'foot';
+      case 'motorcycle':
+      case 'driving':
+      default:
+        return 'car';
+    }
+  }
+
+  Future<void> _getRoute(PlaceModel destination, {bool showPreview = false}) async {
     if (_userPosition == null) {
       _showSnack('Lokasi kamu belum ditemukan.');
       return;
@@ -376,11 +402,12 @@ class _MapScreenState extends State<MapScreen> {
       _polylines = {};
     });
     try {
+      final profile = _osrmProfile(_transportMode);
       final url =
-          'http://router.project-osrm.org/route/v1/driving/'
+          'http://router.project-osrm.org/route/v1/$profile/'
           '${_userPosition!.longitude},${_userPosition!.latitude};'
           '${destination.lng},${destination.lat}'
-          '?overview=full&geometries=polyline';
+          '?overview=full&geometries=polyline&steps=true';
 
       final response = await http
           .get(Uri.parse(url))
@@ -389,14 +416,44 @@ class _MapScreenState extends State<MapScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['code'] == 'Ok' && data['routes'].isNotEmpty) {
-          final encoded = data['routes'][0]['geometry'] as String;
-          final distance = (data['routes'][0]['distance'] as num).toDouble();
-          final duration = (data['routes'][0]['duration'] as num).toDouble();
+          final route = data['routes'][0];
+          final encoded = route['geometry'] as String;
+          final distance = (route['distance'] as num).toDouble();
+          final duration = (route['duration'] as num).toDouble();
 
           final points = PolylinePoints()
               .decodePolyline(encoded)
               .map((p) => LatLng(p.latitude, p.longitude))
               .toList();
+
+          final steps = <Map<String, dynamic>>[];
+          final legs = route['legs'] as List;
+          for (final leg in legs) {
+            for (final step in leg['steps'] as List) {
+              final maneuver = step['maneuver'] as Map<String, dynamic>;
+              final modifier = maneuver['modifier'] as String? ?? '';
+              final type = maneuver['type'] as String? ?? '';
+              final name = step['name'] as String? ?? '';
+              final stepDist = (step['distance'] as num).toDouble();
+              if (type == 'arrive' || type == 'depart' || stepDist < 5) {
+                if (type == 'arrive') {
+                  steps.add({
+                    'type': type,
+                    'modifier': modifier,
+                    'name': 'Sampai di tujuan',
+                    'distance': stepDist,
+                  });
+                }
+                continue;
+              }
+              steps.add({
+                'type': type,
+                'modifier': modifier,
+                'name': name.isEmpty ? 'Jalan tanpa nama' : name,
+                'distance': stepDist,
+              });
+            }
+          }
 
           setState(() {
             _polylines = {
@@ -407,7 +464,16 @@ class _MapScreenState extends State<MapScreen> {
                 width: 5,
               ),
             };
+            _routeDistance = distance;
+            _routeDuration = duration;
+            _routeSteps = steps;
             _isLoadingRoute = false;
+            if (showPreview) {
+              _showRoutePreview = true;
+              _isExpanded = false;
+              _dragOffset = 0;
+              _normalSheetHeight = 0;
+            }
           });
 
           if (points.isNotEmpty && _mapController != null) {
@@ -433,16 +499,98 @@ class _MapScreenState extends State<MapScreen> {
               ),
             );
           }
-
-          final km = (distance / 1000).toStringAsFixed(1);
-          final min = (duration / 60).round();
-          _showSnack('Rute ditemukan: $km km • ±$min menit berkendara');
         }
       }
     } catch (e) {
       setState(() => _isLoadingRoute = false);
       _showSnack('Gagal mengambil rute. Periksa koneksi internet.');
     }
+  }
+
+  void _cancelRoutePreview() {
+    setState(() {
+      _showRoutePreview = false;
+      _polylines = {};
+      _routeSteps = [];
+      _routeDistance = 0;
+      _routeDuration = 0;
+      _normalSheetHeight = 0;
+    });
+  }
+
+  IconData _maneuverIcon(String type, String modifier) {
+    if (type == 'arrive') return Icons.flag;
+    if (type == 'roundabout' || type == 'rotary') return Icons.rotate_right;
+    switch (modifier) {
+      case 'left':
+        return Icons.turn_left;
+      case 'right':
+        return Icons.turn_right;
+      case 'slight left':
+        return Icons.turn_slight_left;
+      case 'slight right':
+        return Icons.turn_slight_right;
+      case 'sharp left':
+        return Icons.turn_sharp_left;
+      case 'sharp right':
+        return Icons.turn_sharp_right;
+      case 'uturn':
+        return Icons.u_turn_left;
+      case 'straight':
+        return Icons.straight;
+      default:
+        return Icons.straight;
+    }
+  }
+
+  String _maneuverText(String type, String modifier, String name) {
+    if (type == 'arrive') return name;
+    String action;
+    switch (modifier) {
+      case 'left':
+        action = 'Belok kiri';
+        break;
+      case 'right':
+        action = 'Belok kanan';
+        break;
+      case 'slight left':
+        action = 'Serong kiri';
+        break;
+      case 'slight right':
+        action = 'Serong kanan';
+        break;
+      case 'sharp left':
+        action = 'Belok tajam kiri';
+        break;
+      case 'sharp right':
+        action = 'Belok tajam kanan';
+        break;
+      case 'uturn':
+        action = 'Putar balik';
+        break;
+      case 'straight':
+        action = 'Lurus';
+        break;
+      default:
+        action = 'Lanjutkan';
+    }
+    if (type == 'roundabout' || type == 'rotary') {
+      action = 'Bundaran, keluar ke $modifier';
+    }
+    return '$action ke $name';
+  }
+
+  String _formatDistance(double meters) {
+    if (meters < 1000) return '${meters.toStringAsFixed(0)} m';
+    return '${(meters / 1000).toStringAsFixed(1)} km';
+  }
+
+  String _formatDuration(double seconds) {
+    final min = (seconds / 60).round();
+    if (min < 60) return '$min mnt';
+    final h = min ~/ 60;
+    final m = min % 60;
+    return '$h jam ${m > 0 ? '$m mnt' : ''}';
   }
 
   // ── Fit all markers ────────────────────────────────────────
@@ -517,7 +665,7 @@ class _MapScreenState extends State<MapScreen> {
     final pending = provider.consumePendingRoute();
     if (pending != null) {
       _onMarkerTapped(pending);
-      _getRoute(pending);
+      _getRoute(pending, showPreview: true);
     }
   }
 
@@ -760,8 +908,17 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ),
 
+          // ── Route preview bottom sheet ─────────────────────
+          if (_showRoutePreview && _selectedPlace != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _buildRoutePreviewSheet(_selectedPlace!, bodyConstraints.maxHeight),
+            ),
+
           // ── Bottom sheet dengan animasi slide ───────────────
-          if (_showBottomSheet && _selectedPlace != null)
+          if (_showBottomSheet && _selectedPlace != null && !_showRoutePreview)
             Positioned(
               left: 0,
               right: 0,
@@ -1350,7 +1507,7 @@ class _MapScreenState extends State<MapScreen> {
                             ),
                             onPressed: _isLoadingRoute
                                 ? null
-                                : () => _getRoute(place),
+                                : () => _getRoute(place, showPreview: true),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -1385,6 +1542,272 @@ class _MapScreenState extends State<MapScreen> {
       ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ── Route Preview Sheet ─────────────────────────────────────
+  Widget _buildRoutePreviewSheet(PlaceModel place, double bodyHeight) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
+      ),
+      constraints: BoxConstraints(maxHeight: bodyHeight - 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle bar
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          // Destination header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                const Icon(Icons.flag, size: 18, color: Color(0xFF1E3A5F)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    place.name,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1E3A5F),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Transport mode selector
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                _TransportChip(
+                  icon: Icons.directions_walk,
+                  label: 'Jalan Kaki',
+                  isSelected: _transportMode == 'walking',
+                  onTap: () {
+                    setState(() => _transportMode = 'walking');
+                    _getRoute(place, showPreview: true);
+                  },
+                ),
+                const SizedBox(width: 8),
+                _TransportChip(
+                  icon: Icons.two_wheeler,
+                  label: 'Motor',
+                  isSelected: _transportMode == 'motorcycle',
+                  onTap: () {
+                    setState(() => _transportMode = 'motorcycle');
+                    _getRoute(place, showPreview: true);
+                  },
+                ),
+                const SizedBox(width: 8),
+                _TransportChip(
+                  icon: Icons.directions_car,
+                  label: 'Mobil',
+                  isSelected: _transportMode == 'driving',
+                  onTap: () {
+                    setState(() => _transportMode = 'driving');
+                    _getRoute(place, showPreview: true);
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          // ETA and distance
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E3A5F).withOpacity(0.05),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.schedule, size: 18, color: Color(0xFF1E3A5F)),
+                      const SizedBox(width: 6),
+                      Text(
+                        _formatDuration(_routeDuration),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E3A5F),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(width: 1, height: 24, color: Colors.grey.shade300),
+                  Row(
+                    children: [
+                      const Icon(Icons.straighten, size: 18, color: Color(0xFF1E3A5F)),
+                      const SizedBox(width: 6),
+                      Text(
+                        _formatDistance(_routeDistance),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E3A5F),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Step-by-step directions
+          if (_routeSteps.isNotEmpty)
+            Flexible(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Panduan Rute',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1E3A5F),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        padding: EdgeInsets.zero,
+                        itemCount: _routeSteps.length,
+                        separatorBuilder: (_, __) => Divider(
+                          height: 1,
+                          color: Colors.grey.shade200,
+                        ),
+                        itemBuilder: (_, i) {
+                          final step = _routeSteps[i];
+                          final type = step['type'] as String;
+                          final modifier = step['modifier'] as String;
+                          final name = step['name'] as String;
+                          final dist = step['distance'] as double;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: type == 'arrive'
+                                        ? Colors.green.withOpacity(0.1)
+                                        : const Color(0xFF1E3A5F).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(
+                                    _maneuverIcon(type, modifier),
+                                    size: 20,
+                                    color: type == 'arrive'
+                                        ? Colors.green
+                                        : const Color(0xFF1E3A5F),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _maneuverText(type, modifier, name),
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      if (dist > 0 && type != 'arrive')
+                                        Text(
+                                          _formatDistance(dist),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          // Action buttons
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.navigation, size: 18),
+                    label: const Text('Mulai'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1E3A5F),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    onPressed: () {
+                      _showSnack('Fitur navigasi langsung akan segera hadir.');
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.close, size: 18),
+                    label: const Text('Batalkan'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    onPressed: _cancelRoutePreview,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1573,5 +1996,57 @@ class _MeasuredColumnState extends State<_MeasuredColumn> {
   Widget build(BuildContext context) {
     WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
     return Container(key: _key, child: widget.child);
+  }
+}
+
+class _TransportChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _TransportChip({
+    required this.icon,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF1E3A5F) : Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected ? const Color(0xFF1E3A5F) : Colors.grey.shade300,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                size: 22,
+                color: isSelected ? Colors.white : Colors.grey.shade600,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: isSelected ? Colors.white : Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
