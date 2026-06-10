@@ -18,6 +18,8 @@ class PlaceProvider extends ChangeNotifier {
   String?             _errorMessage;
   int?                _selectedCategoryId;
   String              _searchQuery    = '';
+  bool                _sortNearest    = false;
+  bool                _sortPopular    = false;
   double?             _userLat;
   double?             _userLng;
   PlaceModel?         _pendingRoutePlace;
@@ -32,6 +34,8 @@ class PlaceProvider extends ChangeNotifier {
   String?             get errorMessage       => _errorMessage;
   int?                get selectedCategoryId => _selectedCategoryId;
   String              get searchQuery        => _searchQuery;
+  bool                get sortNearest        => _sortNearest;
+  bool                get sortPopular        => _sortPopular;
   double?             get userLat            => _userLat;
   double?             get userLng            => _userLng;
   PlaceModel?         get pendingRoutePlace  => _pendingRoutePlace;
@@ -89,6 +93,18 @@ class PlaceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void toggleSortNearest() {
+    _sortNearest = !_sortNearest;
+    _applyFilter();
+    notifyListeners();
+  }
+
+  void toggleSortPopular() {
+    _sortPopular = !_sortPopular;
+    _applyFilter();
+    notifyListeners();
+  }
+
   void _applyFilter() {
     _filteredPlaces = _places.where((place) {
       final matchCategory = _selectedCategoryId == null ||
@@ -98,11 +114,31 @@ class PlaceProvider extends ChangeNotifier {
           place.address.toLowerCase().contains(_searchQuery.toLowerCase());
       return matchCategory && matchSearch;
     }).toList();
+
+    if (_sortNearest && _sortPopular) {
+      _filteredPlaces.sort((a, b) {
+        final da = a.distance ?? double.infinity;
+        final db = b.distance ?? double.infinity;
+        final distCmp = da.compareTo(db);
+        if (distCmp != 0) return distCmp;
+        return b.avgRating.compareTo(a.avgRating);
+      });
+    } else if (_sortNearest) {
+      _filteredPlaces.sort((a, b) {
+        final da = a.distance ?? double.infinity;
+        final db = b.distance ?? double.infinity;
+        return da.compareTo(db);
+      });
+    } else if (_sortPopular) {
+      _filteredPlaces.sort((a, b) => b.avgRating.compareTo(a.avgRating));
+    }
   }
 
   void resetFilter() {
     _selectedCategoryId = null;
     _searchQuery        = '';
+    _sortNearest        = false;
+    _sortPopular        = false;
     _filteredPlaces     = _places;
     notifyListeners();
   }

@@ -333,55 +333,140 @@ class _CategoryFilter extends StatelessWidget {
         if (provider.categories.isEmpty) return const SizedBox.shrink();
         return Container(
           color: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () => provider.filterByCategory(null),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Sort chips
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    const Icon(Icons.sort, size: 16, color: Color(0xFF1E3A5F)),
+                    const SizedBox(width: 8),
+                    _SortChip(
+                      label: 'Terdekat',
+                      icon: Icons.near_me,
+                      isSelected: provider.sortNearest,
+                      onTap: () => provider.toggleSortNearest(),
                     ),
-                    decoration: BoxDecoration(
-                      color: provider.selectedCategoryId == null
-                          ? const Color(0xFF1E3A5F)
-                          : Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: const Color(0xFF1E3A5F),
-                        width: 1.5,
+                    const SizedBox(width: 8),
+                    _SortChip(
+                      label: 'Populer',
+                      icon: Icons.star,
+                      isSelected: provider.sortPopular,
+                      onTap: () => provider.toggleSortPopular(),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Category chips
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () => provider.filterByCategory(null),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: provider.selectedCategoryId == null
+                              ? const Color(0xFF1E3A5F)
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: const Color(0xFF1E3A5F),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Text(
+                          'Semua',
+                          style: TextStyle(
+                            color: provider.selectedCategoryId == null
+                                ? Colors.white
+                                : const Color(0xFF1E3A5F),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
                       ),
                     ),
-                    child: Text(
-                      'Semua',
-                      style: TextStyle(
-                        color: provider.selectedCategoryId == null
-                            ? Colors.white
-                            : const Color(0xFF1E3A5F),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
+                    ...provider.categories.map(
+                      (cat) => CategoryChip(
+                        category: cat,
+                        isSelected: provider.selectedCategoryId == cat.id,
+                        onTap: () => provider.filterByCategory(cat.id),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-                ...provider.categories.map(
-                  (cat) => CategoryChip(
-                    category: cat,
-                    isSelected: provider.selectedCategoryId == cat.id,
-                    onTap: () => provider.filterByCategory(cat.id),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
       },
+    );
+  }
+}
+
+class _SortChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _SortChip({
+    required this.label,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF1E3A5F) : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF1E3A5F) : Colors.grey.shade300,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 14,
+              color: isSelected ? Colors.white : Colors.grey.shade600,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isSelected ? Colors.white : Colors.grey.shade600,
+              ),
+            ),
+            if (isSelected) ...[
+              const SizedBox(width: 4),
+              const Icon(Icons.close, size: 12, color: Colors.white70),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
