@@ -31,7 +31,6 @@ class _MapScreenState extends State<MapScreen> {
   bool _isHoursExpanded = false;
   double _bottomSheetHeight = 0;
   int _slidePage = 0;
-  Offset? _slidePhotoDragStart;
   bool _isExpanded = false;
   double _dragOffset = 0;
   double _normalSheetHeight = 0;
@@ -49,6 +48,12 @@ class _MapScreenState extends State<MapScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _buildMarkers();
     });
+  }
+
+  @override
+  void dispose() {
+    _slideController.dispose();
+    super.dispose();
   }
 
   // ── GPS ────────────────────────────────────────────────────
@@ -512,7 +517,9 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ],
       ),
-      body: Stack(
+      body: LayoutBuilder(
+        builder: (context, bodyConstraints) {
+        return Stack(
         children: [
           // ── Google Map ──────────────────────────────────────
           GoogleMap(
@@ -751,17 +758,19 @@ class _MapScreenState extends State<MapScreen> {
                       }
                     }
                   },
-                  child: _buildBottomSheet(_selectedPlace!),
+                  child: _buildBottomSheet(_selectedPlace!, bodyConstraints.maxHeight),
                 ),
               ),
             ),
         ],
+        );
+        },
       ),
     );
   }
 
   // ── Bottom Sheet Content ───────────────────────────────────
-  Widget _buildBottomSheet(PlaceModel place) {
+  Widget _buildBottomSheet(PlaceModel place, double bodyHeight) {
     final isOpen = _isOpenNow(place.openingHours);
     final todayHours = _getTodayHours(place.openingHours);
     final shortDesc = place.description.length > 120
@@ -775,7 +784,7 @@ class _MapScreenState extends State<MapScreen> {
         boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
       ),
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.82,
+        maxHeight: bodyHeight - 8,
       ),
       child: _MeasuredColumn(
         key: ValueKey(_selectedPlace?.id ?? 0),
@@ -790,27 +799,31 @@ class _MapScreenState extends State<MapScreen> {
             if (needsNormalUpdate) _normalSheetHeight = h;
           });
         },
-        child: SingleChildScrollView(
-          physics: _isExpanded
-              ? const ClampingScrollPhysics()
-              : const NeverScrollableScrollPhysics(),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Handle bar ──────────────────────────
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── Handle bar ──────────────────────────
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-
+            ),
+            // ── Scrollable content ──────────────────
+            Flexible(
+              child: SingleChildScrollView(
+                physics: _isExpanded
+                    ? const ClampingScrollPhysics()
+                    : const NeverScrollableScrollPhysics(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
               // ── Foto: animasi crossfade kecil ↔ besar
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -822,23 +835,48 @@ class _MapScreenState extends State<MapScreen> {
                   crossFadeState: _isExpanded
                       ? CrossFadeState.showSecond
                       : CrossFadeState.showFirst,
-                  firstChild: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: place.photos.isNotEmpty
-                            ? Image.network(
-                                place.photos[0],
-                                width: 80,
-                                height: 80,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
+                  firstChild: IgnorePointer(
+                    ignoring: _isExpanded,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: place.photos.isNotEmpty
+                              ? Image.network(
+                                  place.photos[0],
                                   width: 80,
                                   height: 80,
-                                  color: _getCategoryColor(
-                                    place.category?.name,
-                                  ).withOpacity(0.1),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    width: 80,
+                                    height: 80,
+                                    color: _getCategoryColor(
+                                      place.category?.name,
+                                    ).withOpacity(0.1),
+                                    child: Center(
+                                      child: Icon(
+                                        _getCategoryIcon(
+                                          place.category?.name ?? '',
+                                          place.name,
+                                        ),
+                                        size: 32,
+                                        color: _getCategoryColor(
+                                          place.category?.name,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : Container(
+                                  width: 80,
+                                  height: 80,
+                                  decoration: BoxDecoration(
+                                    color: _getCategoryColor(
+                                      place.category?.name,
+                                    ).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
                                   child: Center(
                                     child: Icon(
                                       _getCategoryIcon(
@@ -852,35 +890,15 @@ class _MapScreenState extends State<MapScreen> {
                                     ),
                                   ),
                                 ),
-                              )
-                            : Container(
-                                width: 80,
-                                height: 80,
-                                decoration: BoxDecoration(
-                                  color: _getCategoryColor(
-                                    place.category?.name,
-                                  ).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Center(
-                                  child: Icon(
-                                    _getCategoryIcon(
-                                      place.category?.name ?? '',
-                                      place.name,
-                                    ),
-                                    size: 32,
-                                    color: _getCategoryColor(
-                                      place.category?.name,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(child: _buildNameSection(place)),
-                    ],
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(child: _buildNameSection(place)),
+                      ],
+                    ),
                   ),
-                  secondChild: StatefulBuilder(
+                  secondChild: IgnorePointer(
+                    ignoring: !_isExpanded,
+                    child: StatefulBuilder(
                     builder: (_, setSlideState) {
                       final reviewPhotos = _getReviewPhotos(place);
                       final allPhotos = <String>[
@@ -925,49 +943,25 @@ class _MapScreenState extends State<MapScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // Foto slideshow
-                          Listener(
-                            behavior: HitTestBehavior.opaque,
-                            onPointerDown: (event) {
-                              _slidePhotoDragStart = event.position;
-                            },
-                            onPointerUp: (event) {
-                              final start = _slidePhotoDragStart;
-                              _slidePhotoDragStart = null;
-                              if (start == null) return;
-                              final delta = event.position - start;
-                              if (delta.dx.abs() <= delta.dy.abs() ||
-                                  delta.dx.abs() < 24) {
-                                return;
-                              }
-                              if (delta.dx < 0 &&
-                                  _slidePage < allPhotos.length - 1) {
-                                setSlideState(() => _slidePage++);
-                                setState(() {});
-                              } else if (delta.dx > 0 && _slidePage > 0) {
-                                setSlideState(() => _slidePage--);
-                                setState(() {});
-                              }
-                            },
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: SizedBox(
+                              height: 180,
                               child: Stack(
                                 children: [
-                                  // Foto utama dengan AnimatedSwitcher
-                                  AnimatedSwitcher(
-                                    duration: const Duration(milliseconds: 300),
-                                    transitionBuilder: (child, animation) =>
-                                        FadeTransition(
-                                          opacity: animation,
-                                          child: child,
-                                        ),
-                                    child: Image.network(
-                                      allPhotos[_slidePage],
-                                      key: ValueKey(_slidePage),
-                                      height: 180,
+                                  // Foto utama dengan PageView (sama seperti di halaman detail)
+                                  PageView.builder(
+                                    controller: _slideController,
+                                    itemCount: allPhotos.length,
+                                    onPageChanged: (i) {
+                                      setSlideState(() => _slidePage = i);
+                                      setState(() {});
+                                    },
+                                    itemBuilder: (_, i) => Image.network(
+                                      allPhotos[i],
                                       width: double.infinity,
                                       fit: BoxFit.cover,
                                       errorBuilder: (_, __, ___) => Container(
-                                        height: 180,
                                         color: _getCategoryColor(
                                           place.category?.name,
                                         ).withOpacity(0.1),
@@ -1093,6 +1087,7 @@ class _MapScreenState extends State<MapScreen> {
                         ],
                       );
                     },
+                  ),
                   ),
                 ),
               ),
@@ -1342,6 +1337,9 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ],
           ),
+        ),
+      ),
+          ],
         ),
       ),
     );
