@@ -71,8 +71,18 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  void switchToMap() {
+    setState(() => _currentIndex = 1);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<PlaceProvider>();
+    if ((provider.pendingRoutePlace != null || provider.pendingViewPlace != null) && _currentIndex != 1) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() => _currentIndex = 1);
+      });
+    }
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       body: IndexedStack(

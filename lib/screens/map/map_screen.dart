@@ -500,9 +500,42 @@ class _MapScreenState extends State<MapScreen> {
     return nowMinutes >= openMin && nowMinutes <= closeMin;
   }
 
+  void _checkPendingRoute() {
+    final provider = context.read<PlaceProvider>();
+    final pending = provider.consumePendingRoute();
+    if (pending != null) {
+      _onMarkerTapped(pending);
+      _getRoute(pending);
+    }
+  }
+
+  void _checkPendingView() {
+    final provider = context.read<PlaceProvider>();
+    final pending = provider.consumePendingView();
+    if (pending != null) {
+      _onMarkerTapped(pending);
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(
+          LatLng(pending.lat - 0.002, pending.lng),
+          16,
+        ),
+      );
+    }
+  }
+
   // ── Build ──────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<PlaceProvider>();
+    if (provider.pendingRoutePlace != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _checkPendingRoute();
+      });
+    } else if (provider.pendingViewPlace != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _checkPendingView();
+      });
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text('Peta Lokasi'),
@@ -774,9 +807,6 @@ class _MapScreenState extends State<MapScreen> {
   Widget _buildBottomSheet(PlaceModel place, double bodyHeight) {
     final isOpen = _isOpenNow(place.openingHours);
     final todayHours = _getTodayHours(place.openingHours);
-    final shortDesc = place.description.length > 120
-        ? '${place.description.substring(0, 120)}...'
-        : place.description;
 
     return Container(
       decoration: const BoxDecoration(
@@ -1276,29 +1306,6 @@ class _MapScreenState extends State<MapScreen> {
                               ],
                             ],
                           ),
-                        ),
-                      ),
-                    ],
-                    if (place.description.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      RichText(
-                        text: TextSpan(
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.black87,
-                            height: 1.5,
-                          ),
-                          children: [
-                            TextSpan(text: shortDesc),
-                            if (place.description.length > 120)
-                              const TextSpan(
-                                text: ' lihat lebih lengkap di detail lokasi',
-                                style: TextStyle(
-                                  color: Color(0xFF1E3A5F),
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                          ],
                         ),
                       ),
                     ],

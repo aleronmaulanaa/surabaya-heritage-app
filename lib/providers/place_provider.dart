@@ -20,6 +20,8 @@ class PlaceProvider extends ChangeNotifier {
   String              _searchQuery    = '';
   double?             _userLat;
   double?             _userLng;
+  PlaceModel?         _pendingRoutePlace;
+  PlaceModel?         _pendingViewPlace;
 
   List<PlaceModel>    get places             => _filteredPlaces;
   List<PlaceModel>    get allPlaces          => _places;
@@ -32,6 +34,8 @@ class PlaceProvider extends ChangeNotifier {
   String              get searchQuery        => _searchQuery;
   double?             get userLat            => _userLat;
   double?             get userLng            => _userLng;
+  PlaceModel?         get pendingRoutePlace  => _pendingRoutePlace;
+  PlaceModel?         get pendingViewPlace   => _pendingViewPlace;
 
   Future<void> fetchPlaces() async {
     _isLoading    = true;
@@ -102,6 +106,28 @@ class PlaceProvider extends ChangeNotifier {
     _filteredPlaces     = _places;
     notifyListeners();
   }
+  void requestRouteToPlace(PlaceModel place) {
+    _pendingRoutePlace = place;
+    notifyListeners();
+  }
+
+  PlaceModel? consumePendingRoute() {
+    final place = _pendingRoutePlace;
+    _pendingRoutePlace = null;
+    return place;
+  }
+
+  void requestViewPlace(PlaceModel place) {
+    _pendingViewPlace = place;
+    notifyListeners();
+  }
+
+  PlaceModel? consumePendingView() {
+    final place = _pendingViewPlace;
+    _pendingViewPlace = null;
+    return place;
+  }
+
   // Simpan posisi user & hitung jarak ke semua tempat
   void setUserLocation(double lat, double lng) {
     _userLat = lat;

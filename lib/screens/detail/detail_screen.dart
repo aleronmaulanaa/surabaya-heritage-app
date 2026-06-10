@@ -55,6 +55,29 @@ class _DetailScreenState extends State<DetailScreen> {
     super.dispose();
   }
 
+  String _getTodayHours(List<String> hours) {
+    if (hours.isEmpty) return 'Jam buka tidak tersedia';
+    final days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+    final today = days[DateTime.now().weekday - 1];
+    for (final h in hours) {
+      if (h.toLowerCase().contains(today.toLowerCase())) return h;
+    }
+    return hours.first;
+  }
+
+  bool _isOpenNow(List<String> hours) {
+    if (hours.isEmpty) return false;
+    final todayHours = _getTodayHours(hours);
+    final timeRegex = RegExp(r'(\d{1,2})[.:](\d{2})\s*[-–]\s*(\d{1,2})[.:](\d{2})');
+    final match = timeRegex.firstMatch(todayHours);
+    if (match == null) return false;
+    final now = TimeOfDay.now();
+    final nowMin = now.hour * 60 + now.minute;
+    final openMin = int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
+    final closeMin = int.parse(match.group(3)!) * 60 + int.parse(match.group(4)!);
+    return nowMin >= openMin && nowMin <= closeMin;
+  }
+
   // Foto admin di depan, foto review di belakang
   // Ganti method _getAllPhotos
   List<String> _getReviewPhotos(place) {
@@ -540,33 +563,48 @@ class _DetailScreenState extends State<DetailScreen> {
                         ),
                       ],
                       const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 48,
-                        child: ElevatedButton.icon(
-                          icon: const Icon(Icons.directions),
-                          label: const Text('Buka Rute'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF1E3A5F),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SizedBox(
+                              height: 48,
+                              child: ElevatedButton.icon(
+                                icon: const Icon(Icons.directions),
+                                label: const Text('Rute'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF1E3A5F),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                onPressed: () {
+                                  context.read<PlaceProvider>().requestRouteToPlace(place);
+                                  Navigator.of(context).popUntil((route) => route.isFirst);
+                                },
+                              ),
                             ),
                           ),
-                          onPressed: () async {
-                            final url = Uri.parse(
-                              'https://www.google.com/maps/dir/?api=1'
-                              '&destination=${place.lat},${place.lng}'
-                              '&travelmode=driving',
-                            );
-                            if (await canLaunchUrl(url)) {
-                              await launchUrl(
-                                url,
-                                mode: LaunchMode.externalApplication,
-                              );
-                            }
-                          },
-                        ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            height: 48,
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.map_outlined, size: 18),
+                              label: const Text('Lihat di Maps', style: TextStyle(fontSize: 12)),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xFF1E3A5F),
+                                side: const BorderSide(color: Color(0xFF1E3A5F)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              onPressed: () {
+                                context.read<PlaceProvider>().requestViewPlace(place);
+                                Navigator.of(context).popUntil((route) => route.isFirst);
+                              },
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 16),
                       if (place.description.isNotEmpty) ...[
@@ -590,13 +628,35 @@ class _DetailScreenState extends State<DetailScreen> {
                         const SizedBox(height: 16),
                       ],
                       if (place.openingHours.isNotEmpty) ...[
-                        const Text(
-                          'Jam Buka',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E3A5F),
-                          ),
+                        Row(
+                          children: [
+                            const Text(
+                              'Jam Buka',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1E3A5F),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: _isOpenNow(place.openingHours)
+                                    ? Colors.green.withOpacity(0.1)
+                                    : Colors.red.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                _isOpenNow(place.openingHours) ? 'Buka' : 'Tutup',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: _isOpenNow(place.openingHours) ? Colors.green : Colors.red,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 8),
                         Container(
@@ -614,15 +674,28 @@ class _DetailScreenState extends State<DetailScreen> {
                                     ),
                                     child: Row(
                                       children: [
-                                        const Icon(
+                                        Icon(
                                           Icons.access_time,
                                           size: 14,
-                                          color: Colors.grey,
+                                          color: h.toLowerCase().contains(
+                                                ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
+                                                    [DateTime.now().weekday - 1].toLowerCase(),
+                                              )
+                                              ? (_isOpenNow(place.openingHours) ? Colors.green : Colors.red)
+                                              : Colors.grey,
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
                                           h,
-                                          style: const TextStyle(fontSize: 13),
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: h.toLowerCase().contains(
+                                                  ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
+                                                      [DateTime.now().weekday - 1].toLowerCase(),
+                                                )
+                                                ? FontWeight.w600
+                                                : FontWeight.normal,
+                                          ),
                                         ),
                                       ],
                                     ),
