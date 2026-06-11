@@ -69,7 +69,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     parent: _navEnterController,
     curve: Curves.easeOutCubic,
   );
-  // Nav bottom sheet drag
+  // Nav bottom sheet
   double _navSheetFraction = 0.0;
 
   static const CameraPosition _surabayaCenter = CameraPosition(
@@ -370,148 +370,46 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   Future<BitmapDescriptor> _createVehicleIcon(String mode) async {
-    IconData iconData;
-    Color primaryColor;
-    Color darkColor;
-    Color lightColor;
-    switch (mode) {
-      case 'motorcycle':
-        iconData = Icons.two_wheeler;
-        primaryColor = const Color(0xFF1565C0);
-        darkColor = const Color(0xFF0D47A1);
-        lightColor = const Color(0xFF42A5F5);
-        break;
-      case 'driving':
-        iconData = Icons.directions_car;
-        primaryColor = const Color(0xFF1565C0);
-        darkColor = const Color(0xFF0D47A1);
-        lightColor = const Color(0xFF42A5F5);
-        break;
-      default:
-        iconData = Icons.directions_walk;
-        primaryColor = const Color(0xFF0D6B58);
-        darkColor = const Color(0xFF094D3F);
-        lightColor = const Color(0xFF26A69A);
-    }
-
     const double canvasSize = 160.0;
-    const double radius = 56.0;
+    const double radius = 52.0;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final center = Offset(canvasSize / 2, canvasSize / 2);
+    const Color blue = Color(0xFF4285F4);
 
     // Outer glow
     canvas.drawCircle(
       center,
-      radius + 12,
+      radius + 14,
       Paint()
-        ..color = primaryColor.withOpacity(0.18)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+        ..color = blue.withOpacity(0.15)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
     );
 
     // Drop shadow
     canvas.drawCircle(
-      Offset(center.dx + 2, center.dy + 3),
-      radius,
+      Offset(center.dx + 1, center.dy + 2),
+      radius + 3,
       Paint()
-        ..color = Colors.black.withOpacity(0.35)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+        ..color = Colors.black.withOpacity(0.2)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
     );
 
-    // Gradient fill
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()
-        ..shader = ui.Gradient.linear(
-          Offset(center.dx - radius, center.dy - radius),
-          Offset(center.dx + radius, center.dy + radius),
-          [lightColor, primaryColor, darkColor],
-          [0.0, 0.45, 1.0],
-        ),
-    );
+    // White outer ring
+    canvas.drawCircle(center, radius + 3, Paint()..color = Colors.white);
 
-    // Top highlight
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(center.dx - 8, center.dy - 22),
-        width: radius * 1.1,
-        height: radius * 0.5,
-      ),
-      Paint()
-        ..color = Colors.white.withOpacity(0.25)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
-    );
+    // Blue fill
+    canvas.drawCircle(center, radius, Paint()..color = blue);
 
-    // White border
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()
-        ..color = Colors.white
-        ..strokeWidth = 4
-        ..style = PaintingStyle.stroke,
-    );
-
-    // Inner ring
-    canvas.drawCircle(
-      center,
-      radius - 6,
-      Paint()
-        ..color = Colors.white.withOpacity(0.12)
-        ..strokeWidth = 1.5
-        ..style = PaintingStyle.stroke,
-    );
-
-    // Icon
-    final iconPainter = TextPainter(
-      text: TextSpan(
-        text: String.fromCharCode(iconData.codePoint),
-        style: TextStyle(
-          fontSize: 52,
-          fontFamily: iconData.fontFamily,
-          color: Colors.white,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-
-    // Icon shadow
-    final shadowPainter = TextPainter(
-      text: TextSpan(
-        text: String.fromCharCode(iconData.codePoint),
-        style: TextStyle(
-          fontSize: 52,
-          fontFamily: iconData.fontFamily,
-          color: Colors.black.withOpacity(0.3),
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    shadowPainter.paint(
-      canvas,
-      Offset(center.dx - shadowPainter.width / 2 + 1.5, center.dy - shadowPainter.height / 2 + 1.5),
-    );
-
-    iconPainter.paint(
-      canvas,
-      Offset(center.dx - iconPainter.width / 2, center.dy - iconPainter.height / 2),
-    );
-
-    // Direction indicator (small arrow at top)
+    // Navigation arrow (white, pointing up)
+    final arrowSize = radius * 0.95;
     final arrowPath = Path()
-      ..moveTo(center.dx, center.dy - radius - 8)
-      ..lineTo(center.dx - 8, center.dy - radius + 4)
-      ..lineTo(center.dx + 8, center.dy - radius + 4)
+      ..moveTo(center.dx, center.dy - arrowSize * 0.65)
+      ..lineTo(center.dx + arrowSize * 0.45, center.dy + arrowSize * 0.5)
+      ..lineTo(center.dx, center.dy + arrowSize * 0.2)
+      ..lineTo(center.dx - arrowSize * 0.45, center.dy + arrowSize * 0.5)
       ..close();
     canvas.drawPath(arrowPath, Paint()..color = Colors.white);
-    canvas.drawPath(
-      arrowPath,
-      Paint()
-        ..color = primaryColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1,
-    );
 
     final picture = recorder.endRecording();
     final image = await picture.toImage(canvasSize.toInt(), canvasSize.toInt());
@@ -662,13 +560,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           }
 
           final isWalking = _transportMode == 'walking';
+          final double actualDuration = isWalking
+              ? distance / 1.39
+              : duration;
           setState(() {
             _polylines = {
               Polyline(
                 polylineId: const PolylineId('route'),
                 points: points,
                 color: const Color(0xFF1E3A5F),
-                width: isWalking ? 5 : 5,
+                width: 5,
                 patterns: isWalking
                     ? [PatternItem.dash(20), PatternItem.gap(12)]
                     : [],
@@ -676,7 +577,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             };
             _routePoints = points;
             _routeDistance = distance;
-            _routeDuration = duration;
+            _routeDuration = actualDuration;
             _routeSteps = steps;
             _isLoadingRoute = false;
             if (showPreview) {
@@ -1549,14 +1450,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
           // ── Navigation mode UI ─────────────────────────────
           if (_isNavigating && _selectedPlace != null) ...[
-            // Scrim overlay when nav bottom sheet is expanded
+            // Tap outside to close expanded nav bottom sheet
             if (_navSheetFraction > 0.1)
               Positioned.fill(
                 child: GestureDetector(
                   onTap: () => _animateNavSheet(0.0),
-                  child: Container(
-                    color: Colors.black.withOpacity(0.3 * _navSheetFraction),
-                  ),
+                  behavior: HitTestBehavior.translucent,
+                  child: const SizedBox.expand(),
                 ),
               ),
 
@@ -2794,12 +2694,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         '${eta.hour.toString().padLeft(2, '0')}.${eta.minute.toString().padLeft(2, '0')}';
 
     final double expandedMax = maxHeight * 0.6;
-    final double expandedStepsHeight = expandedMax - 130;
-    final double stepsHeight = expandedStepsHeight * _navSheetFraction;
+    final double stepsMaxHeight = expandedMax - 130;
+    final double stepsHeight = stepsMaxHeight * _navSheetFraction;
 
     return GestureDetector(
       onVerticalDragUpdate: (details) {
-        final delta = -details.delta.dy / expandedStepsHeight;
+        final delta = -details.delta.dy / 150.0;
         setState(() {
           _navSheetFraction = (_navSheetFraction + delta).clamp(0.0, 1.0);
         });
@@ -2807,10 +2707,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       onVerticalDragEnd: (details) {
         final velocity = -details.primaryVelocity!;
         final bool shouldExpand;
-        if (velocity.abs() > 300) {
+        if (velocity.abs() > 200) {
           shouldExpand = velocity > 0;
         } else {
-          shouldExpand = _navSheetFraction > 0.4;
+          shouldExpand = _navSheetFraction > 0.35;
         }
         _animateNavSheet(shouldExpand ? 1.0 : 0.0);
       },
@@ -2826,164 +2726,156 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ),
           ],
         ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Drag handle
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 16, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _formatDuration(_remainingDuration),
+                          style: const TextStyle(
+                            color: Color(0xFF1B873B),
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${_formatDistance(_remainingDistance)} · $etaStr',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.alt_route),
+                      color: const Color(0xFF3C4043),
+                      iconSize: 22,
+                      onPressed: _showRouteOverview,
+                      tooltip: 'Lihat rute',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFD93025),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                    ),
+                    onPressed: _stopNavigation,
+                    child: const Text(
+                      'Keluar',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              // Info row
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 16, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _formatDuration(_remainingDuration),
-                            style: const TextStyle(
-                              color: Color(0xFF1B873B),
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${_formatDistance(_remainingDistance)} · $etaStr',
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        shape: BoxShape.circle,
-                      ),
-                      child: IconButton(
-                        icon: const Icon(Icons.alt_route),
-                        color: const Color(0xFF3C4043),
-                        iconSize: 22,
-                        onPressed: _showRouteOverview,
-                        tooltip: 'Lihat rute',
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFD93025),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 14,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                      ),
-                      onPressed: _stopNavigation,
-                      child: const Text(
-                        'Keluar',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Expandable route guide section
-              if (_routeSteps.isNotEmpty)
-                ClipRect(
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 50),
-                    height: stepsHeight,
-                    child: Opacity(
-                      opacity: _navSheetFraction.clamp(0.0, 1.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Divider(height: 1, color: Colors.grey.shade200),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-                            child: Row(
-                              children: [
-                                const Text(
-                                  'Panduan Rute',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF1E3A5F),
-                                  ),
+            ),
+            if (_routeSteps.isNotEmpty)
+              ClipRect(
+                child: SizedBox(
+                  height: stepsHeight,
+                  child: Opacity(
+                    opacity: _navSheetFraction.clamp(0.0, 1.0),
+                    child: Column(
+                      children: [
+                        Divider(height: 1, color: Colors.grey.shade200),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                          child: Row(
+                            children: [
+                              const Text(
+                                'Panduan Rute',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF1E3A5F),
                                 ),
-                                const Spacer(),
-                                Text(
-                                  '${_currentStepIndex + 1} / ${_routeSteps.length}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                              physics: const BouncingScrollPhysics(),
-                              itemCount: _routeSteps.length,
-                              separatorBuilder: (_, __) => Divider(
-                                height: 1,
-                                color: Colors.grey.shade200,
                               ),
-                              itemBuilder: (_, i) {
-                                final isCurrent = i == _currentStepIndex;
-                                final isPast = i < _currentStepIndex;
-                                return Opacity(
-                                  opacity: isPast ? 0.4 : 1.0,
-                                  child: Container(
-                                    decoration: isCurrent
-                                        ? BoxDecoration(
-                                            color: const Color(0xFF0D6B58).withOpacity(0.08),
-                                            borderRadius: BorderRadius.circular(8),
-                                          )
-                                        : null,
-                                    padding: isCurrent
-                                        ? const EdgeInsets.symmetric(horizontal: 6, vertical: 2)
-                                        : EdgeInsets.zero,
-                                    child: _buildStepItem(_routeSteps[i]),
-                                  ),
-                                );
-                              },
-                            ),
+                              const Spacer(),
+                              Text(
+                                '${_currentStepIndex + 1} / ${_routeSteps.length}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade500,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                        Expanded(
+                          child: ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: _routeSteps.length,
+                            separatorBuilder: (_, __) => Divider(
+                              height: 1,
+                              color: Colors.grey.shade200,
+                            ),
+                            itemBuilder: (_, i) {
+                              final isCurrent = i == _currentStepIndex;
+                              final isPast = i < _currentStepIndex;
+                              return Opacity(
+                                opacity: isPast ? 0.4 : 1.0,
+                                child: Container(
+                                  decoration: isCurrent
+                                      ? BoxDecoration(
+                                          color: const Color(0xFF0D6B58).withOpacity(0.08),
+                                          borderRadius: BorderRadius.circular(8),
+                                        )
+                                      : null,
+                                  padding: isCurrent
+                                      ? const EdgeInsets.symmetric(horizontal: 6, vertical: 2)
+                                      : EdgeInsets.zero,
+                                  child: _buildStepItem(_routeSteps[i]),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
@@ -3012,9 +2904,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     });
     controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
-        if (mounted) {
-          setState(() => _navSheetFraction = target);
-        }
+        if (mounted) setState(() => _navSheetFraction = target);
         controller.dispose();
       }
     });
