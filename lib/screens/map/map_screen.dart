@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -44,6 +46,16 @@ class _MapScreenState extends State<MapScreen> {
   double _routeDistance = 0;
   double _routeDuration = 0;
   List<Map<String, dynamic>> _routeSteps = [];
+  List<LatLng> _routePoints = [];
+
+  // Live navigation mode
+  bool _isNavigating = false;
+  StreamSubscription<Position>? _positionStream;
+  bool _isMuted = false;
+  bool _isMapCentered = true;
+  int _currentStepIndex = 0;
+  double _remainingDistance = 0;
+  double _remainingDuration = 0;
 
   static const CameraPosition _surabayaCenter = CameraPosition(
     target: LatLng(-7.2575, 112.7521),
@@ -62,6 +74,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void dispose() {
     _slideController.dispose();
+    _positionStream?.cancel();
     super.dispose();
   }
 
@@ -332,6 +345,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _onMarkerTapped(PlaceModel place) {
+    if (_isNavigating) return;
     setState(() {
       _selectedPlace = place;
       _polylines = {};
@@ -393,14 +407,16 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  Future<void> _getRoute(PlaceModel destination, {bool showPreview = false}) async {
+  Future<void> _getRoute(PlaceModel destination, {bool showPreview = false, bool isReroute = false}) async {
     if (_userPosition == null) {
       _showSnack('Lokasi kamu belum ditemukan.');
       return;
     }
     setState(() {
-      _isLoadingRoute = true;
-      _polylines = {};
+      if (!isReroute) {
+        _isLoadingRoute = true;
+        _polylines = {};
+      }
     });
     try {
       final profile = _osrmProfile(_transportMode);
@@ -465,6 +481,7 @@ class _MapScreenState extends State<MapScreen> {
                 width: 5,
               ),
             };
+            _routePoints = points;
             _routeDistance = distance;
             _routeDuration = duration;
             _routeSteps = steps;
@@ -485,7 +502,7 @@ class _MapScreenState extends State<MapScreen> {
             });
           }
 
-          if (points.isNotEmpty && _mapController != null) {
+          if (!isReroute && points.isNotEmpty && _mapController != null) {
             double minLat = points
                 .map((p) => p.latitude)
                 .reduce((a, b) => a < b ? a : b);
@@ -517,6 +534,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _cancelRoutePreview() {
+    _stopNavigation();
     setState(() => _routeEntryOffset = 1.0);
     Future.delayed(const Duration(milliseconds: 400), () {
       if (!mounted) return;
@@ -524,6 +542,7 @@ class _MapScreenState extends State<MapScreen> {
         _showRoutePreview = false;
         _polylines = {};
         _routeSteps = [];
+        _routePoints = [];
         _routeDistance = 0;
         _routeDuration = 0;
         _normalSheetHeight = 0;
@@ -533,6 +552,241 @@ class _MapScreenState extends State<MapScreen> {
         _routeEntryOffset = 1.0;
       });
     });
+  }
+
+  // ── Live navigation ─────────────────────────────────────────
+  void _startNavigation() {
+    if (_selectedPlace == null || _routeSteps.isEmpty || _userPosition == null) {
+      return;
+    }
+
+    setState(() {
+      _isNavigating = true;
+      _showRoutePreview = false;
+      _showBottomSheet = false;
+      _isMapCentered = true;
+      _currentStepIndex = 0;
+      _remainingDistance = _routeDistance;
+      _remainingDuration = _routeDuration;
+    });
+
+    _positionStream?.cancel();
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+      ),
+    ).listen(_onPositionUpdate);
+
+    if (_mapController != null) {
+      _mapController!.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: LatLng(
+              _userPosition!.latitude,
+              _userPosition!.longitude,
+            ),
+            zoom: 18,
+            tilt: 50,
+            bearing: _userPosition!.heading,
+          ),
+        ),
+      );
+    }
+  }
+
+  void _stopNavigation() {
+    _positionStream?.cancel();
+    _positionStream = null;
+    if (!mounted) return;
+    setState(() {
+      _isNavigating = false;
+      _isMapCentered = true;
+      _currentStepIndex = 0;
+      _showRoutePreview = true;
+      _routeEntryOffset = 0.0;
+      _isExpanded = false;
+      _dragOffset = 0;
+    });
+
+    if (_mapController != null) {
+      final lat = _userPosition?.latitude ?? -7.2575;
+      final lng = _userPosition?.longitude ?? 112.7521;
+      _mapController!.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(target: LatLng(lat, lng), zoom: 15),
+        ),
+      );
+    }
+  }
+
+  void _onPositionUpdate(Position position) {
+    if (!mounted || !_isNavigating) return;
+    _userPosition = position;
+
+    if (_routePoints.isEmpty) return;
+
+    final userLatLng = LatLng(position.latitude, position.longitude);
+    final nearestIdx = _findNearestRoutePointIndex(userLatLng);
+
+    double remaining = 0;
+    for (int i = nearestIdx; i < _routePoints.length - 1; i++) {
+      remaining += _distanceBetween(_routePoints[i], _routePoints[i + 1]);
+    }
+
+    final proportion =
+        _routeDistance > 0 ? remaining / _routeDistance : 0.0;
+    final remainingDur = _routeDuration * proportion;
+    final stepIdx = _findCurrentStep(nearestIdx);
+
+    final stepChanged = stepIdx != _currentStepIndex;
+
+    setState(() {
+      _remainingDistance = remaining;
+      _remainingDuration = remainingDur;
+      _currentStepIndex = stepIdx;
+    });
+
+    if (stepChanged && !_isMuted && stepIdx < _routeSteps.length) {
+      final step = _routeSteps[stepIdx];
+      final text = _maneuverText(
+        step['type'] as String,
+        step['modifier'] as String,
+        step['name'] as String,
+      );
+      _showSnack(text);
+    }
+
+    if (_isMapCentered && _mapController != null) {
+      _mapController!.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: LatLng(position.latitude, position.longitude),
+            zoom: 18,
+            tilt: 50,
+            bearing: position.heading,
+          ),
+        ),
+      );
+    }
+
+    // Check if off-route (>50m)
+    final nearestDist =
+        _distanceBetween(userLatLng, _routePoints[nearestIdx]);
+    if (nearestDist > 50) {
+      _rerouteFromCurrentPosition();
+    }
+
+    // Check if arrived
+    if (_selectedPlace != null) {
+      final destDist = _distanceBetween(
+        userLatLng,
+        LatLng(_selectedPlace!.lat, _selectedPlace!.lng),
+      );
+      if (destDist < 30) {
+        _showSnack('Kamu telah sampai di tujuan!');
+        _stopNavigation();
+      }
+    }
+  }
+
+  Future<void> _rerouteFromCurrentPosition() async {
+    if (_selectedPlace == null || _userPosition == null) return;
+    _showSnack('Menghitung ulang rute...');
+    await _getRoute(_selectedPlace!, isReroute: true);
+    if (mounted) {
+      setState(() {
+        _remainingDistance = _routeDistance;
+        _remainingDuration = _routeDuration;
+        _currentStepIndex = 0;
+      });
+    }
+  }
+
+  int _findNearestRoutePointIndex(LatLng point) {
+    if (_routePoints.isEmpty) return 0;
+    int nearest = 0;
+    double minDist = double.infinity;
+    for (int i = 0; i < _routePoints.length; i++) {
+      final d = _distanceBetween(point, _routePoints[i]);
+      if (d < minDist) {
+        minDist = d;
+        nearest = i;
+      }
+    }
+    return nearest;
+  }
+
+  double _distanceBetween(LatLng a, LatLng b) {
+    const r = 6371000.0;
+    final dLat = _toRad(b.latitude - a.latitude);
+    final dLng = _toRad(b.longitude - a.longitude);
+    final sinLat = math.sin(dLat / 2);
+    final sinLng = math.sin(dLng / 2);
+    final h = sinLat * sinLat +
+        math.cos(_toRad(a.latitude)) *
+            math.cos(_toRad(b.latitude)) *
+            sinLng *
+            sinLng;
+    return r * 2 * math.atan2(math.sqrt(h), math.sqrt(1 - h));
+  }
+
+  double _toRad(double deg) => deg * math.pi / 180;
+
+  int _findCurrentStep(int nearestRoutePointIdx) {
+    double distFromStart = 0;
+    for (int i = 0;
+        i < nearestRoutePointIdx && i < _routePoints.length - 1;
+        i++) {
+      distFromStart +=
+          _distanceBetween(_routePoints[i], _routePoints[i + 1]);
+    }
+    double cumulative = 0;
+    for (int i = 0; i < _routeSteps.length; i++) {
+      cumulative += (_routeSteps[i]['distance'] as double);
+      if (cumulative > distFromStart) return i;
+    }
+    return _routeSteps.length - 1;
+  }
+
+  void _recenterMap() {
+    if (_userPosition == null || _mapController == null) return;
+    setState(() => _isMapCentered = true);
+    _mapController!.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: LatLng(
+            _userPosition!.latitude,
+            _userPosition!.longitude,
+          ),
+          zoom: 18,
+          tilt: 50,
+          bearing: _userPosition!.heading,
+        ),
+      ),
+    );
+  }
+
+  void _showRouteOverview() {
+    if (_routePoints.isEmpty || _mapController == null) return;
+    setState(() => _isMapCentered = false);
+    double minLat =
+        _routePoints.map((p) => p.latitude).reduce(math.min);
+    double maxLat =
+        _routePoints.map((p) => p.latitude).reduce(math.max);
+    double minLng =
+        _routePoints.map((p) => p.longitude).reduce(math.min);
+    double maxLng =
+        _routePoints.map((p) => p.longitude).reduce(math.max);
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        80,
+      ),
+    );
   }
 
   IconData _maneuverIcon(String type, String modifier) {
@@ -753,7 +1007,13 @@ class _MapScreenState extends State<MapScreen> {
                 );
               }
             },
-            onTap: (_) => _closeBottomSheet(),
+            onTap: (_) {
+              if (_isNavigating) {
+                setState(() => _isMapCentered = false);
+              } else {
+                _closeBottomSheet();
+              }
+            },
           ),
 
           // ── Loading lokasi ──────────────────────────────────
@@ -841,6 +1101,7 @@ class _MapScreenState extends State<MapScreen> {
           // ── Tombol lokasi user ──────────────────────────────
           Builder(
             builder: (context) {
+              if (_isNavigating) return const SizedBox.shrink();
               if ((_showBottomSheet || _showRoutePreview) && _isExpanded) {
                 return const SizedBox.shrink();
               }
@@ -905,11 +1166,7 @@ class _MapScreenState extends State<MapScreen> {
                           heroTag: 'startNavigation',
                           backgroundColor: const Color(0xFF1E3A5F),
                           elevation: 4,
-                          onPressed: () {
-                            _showSnack(
-                              'Fitur navigasi langsung akan segera hadir.',
-                            );
-                          },
+                          onPressed: _startNavigation,
                           icon: const Icon(
                             Icons.navigation,
                             size: 18,
@@ -932,7 +1189,7 @@ class _MapScreenState extends State<MapScreen> {
             ),
 
           // ── Legend ──────────────────────────────────────────
-          if (!_showBottomSheet)
+          if (!_showBottomSheet && !_isNavigating)
             Positioned(
               bottom: 30,
               left: 16,
@@ -1050,6 +1307,96 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
             ),
+
+          // ── Navigation mode UI ─────────────────────────────
+          if (_isNavigating && _selectedPlace != null) ...[
+            // Header: maneuver instruction
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 4,
+              left: 12,
+              right: 12,
+              child: _buildNavigationHeader(),
+            ),
+
+            // Floating buttons (right side)
+            Positioned(
+              right: 12,
+              bottom: 120,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Sound toggle
+                  _NavFloatingButton(
+                    icon: _isMuted
+                        ? Icons.volume_off
+                        : Icons.volume_up,
+                    iconColor: _isMuted ? Colors.red : null,
+                    onTap: () => setState(() => _isMuted = !_isMuted),
+                  ),
+                  const SizedBox(height: 10),
+                  // Recenter
+                  _NavFloatingButton(
+                    icon: Icons.my_location,
+                    onTap: _recenterMap,
+                  ),
+                ],
+              ),
+            ),
+
+            // "Tengahkan lagi" pill
+            if (!_isMapCentered)
+              Positioned(
+                bottom: 120,
+                left: 12,
+                child: GestureDetector(
+                  onTap: _recenterMap,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.15),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.navigation,
+                          size: 18,
+                          color: const Color(0xFF1A7B6D),
+                        ),
+                        const SizedBox(width: 6),
+                        const Text(
+                          'Tengahkan lagi',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF1A7B6D),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+            // Bottom bar
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _buildNavigationBottom(),
+            ),
+          ],
         ],
         );
         },
@@ -1934,11 +2281,7 @@ class _MapScreenState extends State<MapScreen> {
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                 ),
-                                onPressed: () {
-                                  _showSnack(
-                                    'Fitur navigasi langsung akan segera hadir.',
-                                  );
-                                },
+                                onPressed: _startNavigation,
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -2075,6 +2418,250 @@ class _MapScreenState extends State<MapScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Navigation header (maneuver bar) ────────────────────────
+  Widget _buildNavigationHeader() {
+    if (_routeSteps.isEmpty) return const SizedBox.shrink();
+    final idx = _currentStepIndex.clamp(0, _routeSteps.length - 1);
+    final step = _routeSteps[idx];
+    final type = step['type'] as String;
+    final modifier = step['modifier'] as String;
+    final name = step['name'] as String;
+    final dist = step['distance'] as double;
+
+    final hasNext = idx + 1 < _routeSteps.length;
+    final nextStep = hasNext ? _routeSteps[idx + 1] : null;
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, -0.2),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
+          ),
+        );
+      },
+      child: Column(
+        key: ValueKey(idx),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Main header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0D6B58),
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.35),
+                  blurRadius: 12,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  _maneuverIcon(type, modifier),
+                  color: Colors.white,
+                  size: 36,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 19,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (dist > 0 && type != 'arrive')
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            _formatDistance(dist),
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.75),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Next step preview ("Lalu ↩")
+          if (hasNext && nextStep != null)
+            Container(
+              margin: const EdgeInsets.only(left: 8, top: 4),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 6,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFF3C4043),
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Lalu',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Icon(
+                    _maneuverIcon(
+                      nextStep['type'] as String,
+                      nextStep['modifier'] as String,
+                    ),
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ── Navigation bottom bar ──────────────────────────────────
+  Widget _buildNavigationBottom() {
+    final eta = DateTime.now().add(
+      Duration(seconds: _remainingDuration.round()),
+    );
+    final etaStr =
+        '${eta.hour.toString().padLeft(2, '0')}.${eta.minute.toString().padLeft(2, '0')}';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 16, 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _formatDuration(_remainingDuration),
+                          style: const TextStyle(
+                            color: Color(0xFF1B873B),
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${_formatDistance(_remainingDistance)} · $etaStr',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.alt_route),
+                      color: const Color(0xFF3C4043),
+                      iconSize: 22,
+                      onPressed: _showRouteOverview,
+                      tooltip: 'Lihat rute',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFD93025),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                    ),
+                    onPressed: _stopNavigation,
+                    child: const Text(
+                      'Keluar',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2263,6 +2850,41 @@ class _MeasuredColumnState extends State<_MeasuredColumn> {
   Widget build(BuildContext context) {
     WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
     return Container(key: _key, child: widget.child);
+  }
+}
+
+class _NavFloatingButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color? iconColor;
+
+  const _NavFloatingButton({
+    required this.icon,
+    required this.onTap,
+    this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.15),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Icon(icon, color: iconColor ?? const Color(0xFF3C4043), size: 22),
+      ),
+    );
   }
 }
 
