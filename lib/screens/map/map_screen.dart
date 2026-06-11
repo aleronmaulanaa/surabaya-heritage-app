@@ -39,6 +39,7 @@ class _MapScreenState extends State<MapScreen> {
 
   // Navigation route preview
   bool _showRoutePreview = false;
+  double _routeEntryOffset = 1.0;
   String _transportMode = 'walking';
   double _routeDistance = 0;
   double _routeDuration = 0;
@@ -470,12 +471,19 @@ class _MapScreenState extends State<MapScreen> {
             _isLoadingRoute = false;
             if (showPreview) {
               _showRoutePreview = true;
+              _routeEntryOffset = 1.0;
               _isExpanded = false;
               _dragOffset = 0;
               _normalSheetHeight = 0;
               _overscrollAccum = 0;
             }
           });
+
+          if (showPreview) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) setState(() => _routeEntryOffset = 0.0);
+            });
+          }
 
           if (points.isNotEmpty && _mapController != null) {
             double minLat = points
@@ -509,16 +517,21 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _cancelRoutePreview() {
-    setState(() {
-      _showRoutePreview = false;
-      _polylines = {};
-      _routeSteps = [];
-      _routeDistance = 0;
-      _routeDuration = 0;
-      _normalSheetHeight = 0;
-      _isExpanded = false;
-      _dragOffset = 0;
-      _overscrollAccum = 0;
+    setState(() => _routeEntryOffset = 1.0);
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      setState(() {
+        _showRoutePreview = false;
+        _polylines = {};
+        _routeSteps = [];
+        _routeDistance = 0;
+        _routeDuration = 0;
+        _normalSheetHeight = 0;
+        _isExpanded = false;
+        _dragOffset = 0;
+        _overscrollAccum = 0;
+        _routeEntryOffset = 1.0;
+      });
     });
   }
 
@@ -844,10 +857,13 @@ class _MapScreenState extends State<MapScreen> {
                 targetBottom = base + 16 - dragPixels;
                 if (targetBottom < 30) targetBottom = 30;
               }
-              return Positioned(
+              return AnimatedPositioned(
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeOut,
                 bottom: targetBottom,
                 right: 16,
                 child: FloatingActionButton(
+                  heroTag: 'myLocation',
                   mini: true,
                   backgroundColor: Colors.white,
                   onPressed: _getUserLocation,
@@ -859,6 +875,61 @@ class _MapScreenState extends State<MapScreen> {
               );
             },
           ),
+
+          // ── Tombol mulai navigasi (floating, saat route normal) ─
+          if (_showRoutePreview && _selectedPlace != null)
+            Builder(
+              builder: (context) {
+                final base = _normalSheetHeight > 0
+                    ? _normalSheetHeight
+                    : _bottomSheetHeight;
+                final dragPixels = _dragOffset * base;
+                double targetBottom = base + 16 - dragPixels;
+                if (targetBottom < 30) targetBottom = 30;
+                final bool showMulai =
+                    !_isExpanded && _routeEntryOffset < 0.5;
+                return AnimatedPositioned(
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeOut,
+                  bottom: targetBottom,
+                  left: 16,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 300),
+                    opacity: showMulai ? 1.0 : 0.0,
+                    child: AnimatedScale(
+                      duration: const Duration(milliseconds: 300),
+                      scale: showMulai ? 1.0 : 0.0,
+                      child: IgnorePointer(
+                        ignoring: !showMulai,
+                        child: FloatingActionButton.extended(
+                          heroTag: 'startNavigation',
+                          backgroundColor: const Color(0xFF1E3A5F),
+                          elevation: 4,
+                          onPressed: () {
+                            _showSnack(
+                              'Fitur navigasi langsung akan segera hadir.',
+                            );
+                          },
+                          icon: const Icon(
+                            Icons.navigation,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                          label: const Text(
+                            'Mulai',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
 
           // ── Legend ──────────────────────────────────────────
           if (!_showBottomSheet)
@@ -918,10 +989,16 @@ class _MapScreenState extends State<MapScreen> {
               right: 0,
               bottom: 0,
               child: AnimatedSlide(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-                offset: Offset(0, _dragOffset),
-                child: _buildRoutePreviewSheet(_selectedPlace!, bodyConstraints.maxHeight),
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeOutCubic,
+                offset: Offset(0, _routeEntryOffset),
+                child: FractionalTranslation(
+                  translation: Offset(0, _dragOffset),
+                  child: _buildRoutePreviewSheet(
+                    _selectedPlace!,
+                    bodyConstraints.maxHeight,
+                  ),
+                ),
               ),
             ),
 
@@ -1556,9 +1633,11 @@ class _MapScreenState extends State<MapScreen> {
 
   // ── Route Preview Sheet ─────────────────────────────────────
   Widget _buildRoutePreviewSheet(PlaceModel place, double bodyHeight) {
-    final double normalMaxHeight = bodyHeight * 0.5;
+    final double normalMaxHeight = bodyHeight * 0.6;
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -1583,7 +1662,7 @@ class _MapScreenState extends State<MapScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ── Draggable header area ──
+            // ── Draggable header: nama + kendaraan ──
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onVerticalDragUpdate: (details) {
@@ -1633,12 +1712,16 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     ),
                   ),
-                  // Destination header
+                  // Nama tujuan + tombol batalkan kecil (animated)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Row(
                       children: [
-                        const Icon(Icons.flag, size: 18, color: Color(0xFF1E3A5F)),
+                        const Icon(
+                          Icons.flag,
+                          size: 18,
+                          color: Color(0xFF1E3A5F),
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -1650,6 +1733,35 @@ class _MapScreenState extends State<MapScreen> {
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        AnimatedOpacity(
+                          duration: const Duration(milliseconds: 250),
+                          opacity: _isExpanded ? 0.0 : 1.0,
+                          child: AnimatedScale(
+                            duration: const Duration(milliseconds: 250),
+                            scale: _isExpanded ? 0.0 : 1.0,
+                            child: IgnorePointer(
+                              ignoring: _isExpanded,
+                              child: SizedBox(
+                                width: 32,
+                                height: 32,
+                                child: Material(
+                                  color: Colors.red.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(8),
+                                    onTap: _cancelRoutePreview,
+                                    child: const Icon(
+                                      Icons.close,
+                                      size: 16,
+                                      color: Colors.red,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -1694,215 +1806,275 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // ETA and distance
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E3A5F).withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(Icons.schedule, size: 18, color: Color(0xFF1E3A5F)),
-                              const SizedBox(width: 6),
-                              Text(
-                                _formatDuration(_routeDuration),
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1E3A5F),
-                                ),
-                              ),
-                            ],
-                          ),
-                          Container(width: 1, height: 24, color: Colors.grey.shade300),
-                          Row(
-                            children: [
-                              const Icon(Icons.straighten, size: 18, color: Color(0xFF1E3A5F)),
-                              const SizedBox(width: 6),
-                              Text(
-                                _formatDistance(_routeDistance),
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1E3A5F),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
                 ],
               ),
             ),
-            // ── Steps list (scrollable) ──
-            if (_routeSteps.isNotEmpty)
+            // ── Konten: beda layout antara normal vs expanded ──
+            if (_isExpanded) ...[
+              // Expanded: ETA + label fixed, hanya steps yang scroll
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _buildEtaCard(),
+              ),
+              if (_routeSteps.isNotEmpty)
+                const SizedBox(
+                  width: double.infinity,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    child: Text(
+                      'Panduan Rute',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1E3A5F),
+                      ),
+                    ),
+                  ),
+                ),
+              if (_routeSteps.isNotEmpty)
+                Flexible(
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (notification) {
+                      if (notification is ScrollUpdateNotification) {
+                        if (notification.metrics.pixels <= 0 &&
+                            (notification.dragDetails?.delta.dy ?? 0) > 0) {
+                          _overscrollAccum +=
+                              notification.dragDetails!.delta.dy;
+                          if (_overscrollAccum > 60) {
+                            _overscrollAccum = 0;
+                            setState(() {
+                              _isExpanded = false;
+                              _dragOffset = 0;
+                            });
+                            return true;
+                          }
+                        } else {
+                          _overscrollAccum = 0;
+                        }
+                      } else if (notification is ScrollEndNotification) {
+                        _overscrollAccum = 0;
+                      }
+                      return false;
+                    },
+                    child: ListView.separated(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: _routeSteps.length,
+                      separatorBuilder: (_, __) => Divider(
+                        height: 1,
+                        color: Colors.grey.shade200,
+                      ),
+                      itemBuilder: (_, i) => _buildStepItem(_routeSteps[i]),
+                    ),
+                  ),
+                ),
+            ] else ...[
+              // Normal: semua konten scrollable
               Flexible(
-                child: Padding(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
-                        'Panduan Rute',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1E3A5F),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Flexible(
-                        child: NotificationListener<ScrollNotification>(
-                          onNotification: (notification) {
-                            if (!_isExpanded) return false;
-                            if (notification is ScrollUpdateNotification) {
-                              if (notification.metrics.pixels <= 0 &&
-                                  (notification.dragDetails?.delta.dy ?? 0) > 0) {
-                                _overscrollAccum +=
-                                    notification.dragDetails!.delta.dy;
-                                if (_overscrollAccum > 60) {
-                                  _overscrollAccum = 0;
-                                  setState(() {
-                                    _isExpanded = false;
-                                    _dragOffset = 0;
-                                  });
-                                  return true;
-                                }
-                              } else {
-                                _overscrollAccum = 0;
-                              }
-                            } else if (notification is ScrollEndNotification) {
-                              _overscrollAccum = 0;
-                            }
-                            return false;
-                          },
-                          child: ListView.separated(
-                            shrinkWrap: true,
-                            padding: EdgeInsets.zero,
-                            physics: const BouncingScrollPhysics(),
-                            itemCount: _routeSteps.length,
-                            separatorBuilder: (_, __) => Divider(
-                              height: 1,
-                              color: Colors.grey.shade200,
-                            ),
-                            itemBuilder: (_, i) {
-                              final step = _routeSteps[i];
-                              final type = step['type'] as String;
-                              final modifier = step['modifier'] as String;
-                              final name = step['name'] as String;
-                              final dist = step['distance'] as double;
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 36,
-                                      height: 36,
-                                      decoration: BoxDecoration(
-                                        color: type == 'arrive'
-                                            ? Colors.green.withOpacity(0.1)
-                                            : const Color(0xFF1E3A5F)
-                                                .withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Icon(
-                                        _maneuverIcon(type, modifier),
-                                        size: 20,
-                                        color: type == 'arrive'
-                                            ? Colors.green
-                                            : const Color(0xFF1E3A5F),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            _maneuverText(type, modifier, name),
-                                            style: const TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          if (dist > 0 && type != 'arrive')
-                                            Text(
-                                              _formatDistance(dist),
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.grey.shade600,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
+                      _buildEtaCard(),
+                      if (_routeSteps.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Panduan Rute',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF1E3A5F),
                           ),
                         ),
-                      ),
+                        const SizedBox(height: 8),
+                        ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          padding: EdgeInsets.zero,
+                          itemCount: _routeSteps.length,
+                          separatorBuilder: (_, __) => Divider(
+                            height: 1,
+                            color: Colors.grey.shade200,
+                          ),
+                          itemBuilder: (_, i) =>
+                              _buildStepItem(_routeSteps[i]),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
                     ],
                   ),
                 ),
               ),
-            // Action buttons
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.navigation, size: 18),
-                      label: const Text('Mulai'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF1E3A5F),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+            ],
+            // ── Tombol aksi expanded (animated) ──
+            AnimatedSize(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+              child: _isExpanded
+                  ? AnimatedOpacity(
+                      duration: const Duration(milliseconds: 250),
+                      opacity: _isExpanded ? 1.0 : 0.0,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                icon: const Icon(Icons.navigation, size: 18),
+                                label: const Text('Mulai'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF1E3A5F),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                onPressed: () {
+                                  _showSnack(
+                                    'Fitur navigasi langsung akan segera hadir.',
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                icon: const Icon(Icons.close, size: 18),
+                                label: const Text('Batalkan'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  side: const BorderSide(color: Colors.red),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                onPressed: _cancelRoutePreview,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      onPressed: () {
-                        _showSnack('Fitur navigasi langsung akan segera hadir.');
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.close, size: 18),
-                      label: const Text('Batalkan'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        side: const BorderSide(color: Colors.red),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      onPressed: _cancelRoutePreview,
-                    ),
-                  ),
-                ],
-              ),
+                    )
+                  : const SizedBox(width: double.infinity, height: 0),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ── ETA card (reusable) ────────────────────────────────────
+  Widget _buildEtaCard() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E3A5F).withOpacity(0.05),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.schedule,
+                size: 18,
+                color: Color(0xFF1E3A5F),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _formatDuration(_routeDuration),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E3A5F),
+                ),
+              ),
+            ],
+          ),
+          Container(width: 1, height: 24, color: Colors.grey.shade300),
+          Row(
+            children: [
+              const Icon(
+                Icons.straighten,
+                size: 18,
+                color: Color(0xFF1E3A5F),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _formatDistance(_routeDistance),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E3A5F),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Step item (reusable) ───────────────────────────────────
+  Widget _buildStepItem(Map<String, dynamic> step) {
+    final type = step['type'] as String;
+    final modifier = step['modifier'] as String;
+    final name = step['name'] as String;
+    final dist = step['distance'] as double;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: type == 'arrive'
+                  ? Colors.green.withOpacity(0.1)
+                  : const Color(0xFF1E3A5F).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              _maneuverIcon(type, modifier),
+              size: 20,
+              color: type == 'arrive' ? Colors.green : const Color(0xFF1E3A5F),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _maneuverText(type, modifier, name),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (dist > 0 && type != 'arrive')
+                  Text(
+                    _formatDistance(dist),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
