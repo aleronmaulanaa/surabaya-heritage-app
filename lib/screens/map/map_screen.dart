@@ -39,7 +39,7 @@ class _MapScreenState extends State<MapScreen> {
 
   // Navigation route preview
   bool _showRoutePreview = false;
-  String _transportMode = 'driving';
+  String _transportMode = 'walking';
   double _routeDistance = 0;
   double _routeDuration = 0;
   List<Map<String, dynamic>> _routeSteps = [];
@@ -473,6 +473,7 @@ class _MapScreenState extends State<MapScreen> {
               _isExpanded = false;
               _dragOffset = 0;
               _normalSheetHeight = 0;
+              _overscrollAccum = 0;
             }
           });
 
@@ -515,6 +516,9 @@ class _MapScreenState extends State<MapScreen> {
       _routeDistance = 0;
       _routeDuration = 0;
       _normalSheetHeight = 0;
+      _isExpanded = false;
+      _dragOffset = 0;
+      _overscrollAccum = 0;
     });
   }
 
@@ -824,13 +828,12 @@ class _MapScreenState extends State<MapScreen> {
           // ── Tombol lokasi user ──────────────────────────────
           Builder(
             builder: (context) {
-              // Sembunyikan saat bottom sheet di level maksimal
-              if (_showBottomSheet && _isExpanded) {
+              if ((_showBottomSheet || _showRoutePreview) && _isExpanded) {
                 return const SizedBox.shrink();
               }
 
               double targetBottom;
-              if (!_showBottomSheet) {
+              if (!_showBottomSheet && !_showRoutePreview) {
                 targetBottom = 30;
               } else {
                 final base = _normalSheetHeight > 0
@@ -914,7 +917,12 @@ class _MapScreenState extends State<MapScreen> {
               left: 0,
               right: 0,
               bottom: 0,
-              child: _buildRoutePreviewSheet(_selectedPlace!, bodyConstraints.maxHeight),
+              child: AnimatedSlide(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+                offset: Offset(0, _dragOffset),
+                child: _buildRoutePreviewSheet(_selectedPlace!, bodyConstraints.maxHeight),
+              ),
             ),
 
           // ── Bottom sheet dengan animasi slide ───────────────
@@ -1548,266 +1556,353 @@ class _MapScreenState extends State<MapScreen> {
 
   // ── Route Preview Sheet ─────────────────────────────────────
   Widget _buildRoutePreviewSheet(PlaceModel place, double bodyHeight) {
+    final double normalMaxHeight = bodyHeight * 0.5;
+
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
       ),
-      constraints: BoxConstraints(maxHeight: bodyHeight - 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Handle bar
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          // Destination header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                const Icon(Icons.flag, size: 18, color: Color(0xFF1E3A5F)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    place.name,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E3A5F),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Transport mode selector
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                _TransportChip(
-                  icon: Icons.directions_walk,
-                  label: 'Jalan Kaki',
-                  isSelected: _transportMode == 'walking',
-                  onTap: () {
-                    setState(() => _transportMode = 'walking');
-                    _getRoute(place, showPreview: true);
-                  },
-                ),
-                const SizedBox(width: 8),
-                _TransportChip(
-                  icon: Icons.two_wheeler,
-                  label: 'Motor',
-                  isSelected: _transportMode == 'motorcycle',
-                  onTap: () {
-                    setState(() => _transportMode = 'motorcycle');
-                    _getRoute(place, showPreview: true);
-                  },
-                ),
-                const SizedBox(width: 8),
-                _TransportChip(
-                  icon: Icons.directions_car,
-                  label: 'Mobil',
-                  isSelected: _transportMode == 'driving',
-                  onTap: () {
-                    setState(() => _transportMode = 'driving');
-                    _getRoute(place, showPreview: true);
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          // ETA and distance
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E3A5F).withOpacity(0.05),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      constraints: BoxConstraints(
+        maxHeight: _isExpanded ? bodyHeight - 8 : normalMaxHeight,
+      ),
+      child: _MeasuredColumn(
+        key: ValueKey('route_${_selectedPlace?.id ?? 0}'),
+        onHeightChanged: (h) {
+          if (!mounted) return;
+          final needsHeightUpdate = (h - _bottomSheetHeight).abs() > 1;
+          final needsNormalUpdate =
+              !_isExpanded && _normalSheetHeight == 0 && h > 0;
+          if (!needsHeightUpdate && !needsNormalUpdate) return;
+          setState(() {
+            if (needsHeightUpdate) _bottomSheetHeight = h;
+            if (needsNormalUpdate) _normalSheetHeight = h;
+          });
+        },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── Draggable header area ──
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragUpdate: (details) {
+                setState(() {
+                  _dragOffset = (_dragOffset + details.delta.dy / 300)
+                      .clamp(0.0, 1.0);
+                });
+              },
+              onVerticalDragEnd: (details) {
+                final velocity = details.primaryVelocity ?? 0;
+                if (velocity < -300 && !_isExpanded) {
+                  setState(() {
+                    _isExpanded = true;
+                    _dragOffset = 0;
+                  });
+                } else if (velocity > 300) {
+                  if (_isExpanded) {
+                    setState(() {
+                      _isExpanded = false;
+                      _dragOffset = 0;
+                    });
+                  } else if (_dragOffset > 0.15) {
+                    _cancelRoutePreview();
+                  } else {
+                    setState(() => _dragOffset = 0);
+                  }
+                } else {
+                  if (_dragOffset > 0.3) {
+                    _cancelRoutePreview();
+                  } else {
+                    setState(() => _dragOffset = 0);
+                  }
+                }
+              },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
+                  // Handle bar
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  // Destination header
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.flag, size: 18, color: Color(0xFF1E3A5F)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            place.name,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E3A5F),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Transport mode selector
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        _TransportChip(
+                          icon: Icons.directions_walk,
+                          label: 'Jalan Kaki',
+                          isSelected: _transportMode == 'walking',
+                          onTap: () {
+                            setState(() => _transportMode = 'walking');
+                            _getRoute(place, showPreview: true);
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        _TransportChip(
+                          icon: Icons.two_wheeler,
+                          label: 'Motor',
+                          isSelected: _transportMode == 'motorcycle',
+                          onTap: () {
+                            setState(() => _transportMode = 'motorcycle');
+                            _getRoute(place, showPreview: true);
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        _TransportChip(
+                          icon: Icons.directions_car,
+                          label: 'Mobil',
+                          isSelected: _transportMode == 'driving',
+                          onTap: () {
+                            setState(() => _transportMode = 'driving');
+                            _getRoute(place, showPreview: true);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // ETA and distance
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E3A5F).withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.schedule, size: 18, color: Color(0xFF1E3A5F)),
+                              const SizedBox(width: 6),
+                              Text(
+                                _formatDuration(_routeDuration),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1E3A5F),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(width: 1, height: 24, color: Colors.grey.shade300),
+                          Row(
+                            children: [
+                              const Icon(Icons.straighten, size: 18, color: Color(0xFF1E3A5F)),
+                              const SizedBox(width: 6),
+                              Text(
+                                _formatDistance(_routeDistance),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1E3A5F),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
+            // ── Steps list (scrollable) ──
+            if (_routeSteps.isNotEmpty)
+              Flexible(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.schedule, size: 18, color: Color(0xFF1E3A5F)),
-                      const SizedBox(width: 6),
-                      Text(
-                        _formatDuration(_routeDuration),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                      const Text(
+                        'Panduan Rute',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
                           color: Color(0xFF1E3A5F),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Flexible(
+                        child: NotificationListener<ScrollNotification>(
+                          onNotification: (notification) {
+                            if (!_isExpanded) return false;
+                            if (notification is ScrollUpdateNotification) {
+                              if (notification.metrics.pixels <= 0 &&
+                                  (notification.dragDetails?.delta.dy ?? 0) > 0) {
+                                _overscrollAccum +=
+                                    notification.dragDetails!.delta.dy;
+                                if (_overscrollAccum > 60) {
+                                  _overscrollAccum = 0;
+                                  setState(() {
+                                    _isExpanded = false;
+                                    _dragOffset = 0;
+                                  });
+                                  return true;
+                                }
+                              } else {
+                                _overscrollAccum = 0;
+                              }
+                            } else if (notification is ScrollEndNotification) {
+                              _overscrollAccum = 0;
+                            }
+                            return false;
+                          },
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            padding: EdgeInsets.zero,
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: _routeSteps.length,
+                            separatorBuilder: (_, __) => Divider(
+                              height: 1,
+                              color: Colors.grey.shade200,
+                            ),
+                            itemBuilder: (_, i) {
+                              final step = _routeSteps[i];
+                              final type = step['type'] as String;
+                              final modifier = step['modifier'] as String;
+                              final name = step['name'] as String;
+                              final dist = step['distance'] as double;
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
+                                        color: type == 'arrive'
+                                            ? Colors.green.withOpacity(0.1)
+                                            : const Color(0xFF1E3A5F)
+                                                .withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Icon(
+                                        _maneuverIcon(type, modifier),
+                                        size: 20,
+                                        color: type == 'arrive'
+                                            ? Colors.green
+                                            : const Color(0xFF1E3A5F),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            _maneuverText(type, modifier, name),
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          if (dist > 0 && type != 'arrive')
+                                            Text(
+                                              _formatDistance(dist),
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  Container(width: 1, height: 24, color: Colors.grey.shade300),
-                  Row(
-                    children: [
-                      const Icon(Icons.straighten, size: 18, color: Color(0xFF1E3A5F)),
-                      const SizedBox(width: 6),
-                      Text(
-                        _formatDistance(_routeDistance),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E3A5F),
+                ),
+              ),
+            // Action buttons
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.navigation, size: 18),
+                      label: const Text('Mulai'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1E3A5F),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                    ],
+                      onPressed: () {
+                        _showSnack('Fitur navigasi langsung akan segera hadir.');
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.close, size: 18),
+                      label: const Text('Batalkan'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      onPressed: _cancelRoutePreview,
+                    ),
                   ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          // Step-by-step directions
-          if (_routeSteps.isNotEmpty)
-            Flexible(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'Panduan Rute',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1E3A5F),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Flexible(
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        padding: EdgeInsets.zero,
-                        itemCount: _routeSteps.length,
-                        separatorBuilder: (_, __) => Divider(
-                          height: 1,
-                          color: Colors.grey.shade200,
-                        ),
-                        itemBuilder: (_, i) {
-                          final step = _routeSteps[i];
-                          final type = step['type'] as String;
-                          final modifier = step['modifier'] as String;
-                          final name = step['name'] as String;
-                          final dist = step['distance'] as double;
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 36,
-                                  height: 36,
-                                  decoration: BoxDecoration(
-                                    color: type == 'arrive'
-                                        ? Colors.green.withOpacity(0.1)
-                                        : const Color(0xFF1E3A5F).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Icon(
-                                    _maneuverIcon(type, modifier),
-                                    size: 20,
-                                    color: type == 'arrive'
-                                        ? Colors.green
-                                        : const Color(0xFF1E3A5F),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        _maneuverText(type, modifier, name),
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      if (dist > 0 && type != 'arrive')
-                                        Text(
-                                          _formatDistance(dist),
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.grey.shade600,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          // Action buttons
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.navigation, size: 18),
-                    label: const Text('Mulai'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1E3A5F),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    onPressed: () {
-                      _showSnack('Fitur navigasi langsung akan segera hadir.');
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.close, size: 18),
-                    label: const Text('Batalkan'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
-                      side: const BorderSide(color: Colors.red),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    onPressed: _cancelRoutePreview,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
