@@ -13,6 +13,7 @@ import '../../models/review_model.dart';
 import '../../services/api_service.dart';
 import '../../utils/constants.dart';
 import '../auth/login_screen.dart';
+import '../../utils/app_notification.dart';
 
 class DetailScreen extends StatefulWidget {
   final int placeId;
@@ -409,25 +410,13 @@ class _DetailScreenState extends State<DetailScreen> {
                                 auth.token!,
                               );
                               if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Bookmark dihapus'),
-                                    backgroundColor: Colors.grey,
-                                  ),
-                                );
+                                AppNotification.show(context, message: 'Bookmark dihapus', type: NotifType.info);
                               }
                             }
                           } else {
                             await bookmark.addBookmark(place.id, auth.token!);
                             if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Berhasil disimpan ke bookmark!',
-                                  ),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
+                              AppNotification.show(context, message: 'Berhasil disimpan ke bookmark!', type: NotifType.success);
                             }
                           }
                         },
@@ -742,15 +731,7 @@ class _DetailScreenState extends State<DetailScreen> {
                                     style: TextStyle(color: Colors.green),
                                   ),
                                   onPressed: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Kamu sudah memberikan ulasan untuk tempat ini. Kamu bisa mengedit ulasanmu melalui detail ulasan.',
-                                        ),
-                                        backgroundColor: Colors.orange,
-                                        duration: Duration(seconds: 3),
-                                      ),
-                                    );
+                                    AppNotification.show(context, message: 'Kamu sudah memberikan ulasan untuk tempat ini. Kamu bisa mengedit ulasanmu melalui detail ulasan.', type: NotifType.warning);
                                   },
                                 ),
                             ],
@@ -1075,14 +1056,7 @@ class _DetailScreenState extends State<DetailScreen> {
 
   void _showEditReviewDialog(BuildContext context, ReviewModel review) {
     if (review.editCount >= 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Review sudah tidak bisa diedit lagi (maks 2 kali edit).',
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
+      AppNotification.show(context, message: 'Review sudah tidak bisa diedit lagi (maks 2 kali edit).', type: NotifType.warning);
       return;
     }
 
@@ -1396,24 +1370,9 @@ class _DetailScreenState extends State<DetailScreen> {
                                     context
                                         .read<PlaceProvider>()
                                         .fetchPlaceDetail(widget.placeId);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Ulasan berhasil diupdate!',
-                                        ),
-                                        backgroundColor: Colors.green,
-                                      ),
-                                    );
+                                    AppNotification.show(context, message: 'Ulasan berhasil diupdate!', type: NotifType.success);
                                   } else if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          result['message'] ??
-                                              'Gagal mengedit ulasan',
-                                        ),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
+                                    AppNotification.show(context, message: result['message'] ?? 'Gagal mengedit ulasan', type: NotifType.error);
                                   }
                                 }
                               : null, // ← null = tombol tidak bisa ditekan
@@ -1454,12 +1413,7 @@ class _DetailScreenState extends State<DetailScreen> {
               );
               if (result['success'] == true && context.mounted) {
                 context.read<PlaceProvider>().fetchPlaceDetail(widget.placeId);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Ulasan berhasil dihapus.'),
-                    backgroundColor: Colors.grey,
-                  ),
-                );
+                AppNotification.show(context, message: 'Ulasan berhasil dihapus.', type: NotifType.info);
               }
             },
             child: const Text('Hapus', style: TextStyle(color: Colors.red)),
@@ -1684,21 +1638,9 @@ class _DetailScreenState extends State<DetailScreen> {
                           context.read<PlaceProvider>().fetchPlaceDetail(
                             widget.placeId,
                           );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Ulasan berhasil ditambahkan!'),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
+                          AppNotification.show(context, message: 'Ulasan berhasil ditambahkan!', type: NotifType.success);
                         } else if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                result['message'] ?? 'Gagal mengirim ulasan',
-                              ),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
+                          AppNotification.show(context, message: result['message'] ?? 'Gagal mengirim ulasan', type: NotifType.error);
                         }
                       },
                       child: const Text('Kirim Ulasan'),
@@ -1751,12 +1693,7 @@ class _DetailScreenState extends State<DetailScreen> {
       return null;
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Gagal upload foto: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppNotification.show(context, message: 'Gagal upload foto. Periksa koneksi internet Anda.', type: NotifType.error);
       }
       return null;
     }

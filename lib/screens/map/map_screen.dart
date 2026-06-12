@@ -14,6 +14,7 @@ import '../../providers/place_provider.dart';
 import '../../models/place_model.dart';
 import '../detail/detail_screen.dart';
 import '../../models/review_model.dart';
+import '../../utils/app_notification.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -115,7 +116,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         setState(() => _isLoadingLocation = false);
-        _showSnack('Layanan lokasi (GPS) tidak aktif.');
+        _showSnack('Layanan lokasi (GPS) tidak aktif. Silakan aktifkan GPS di pengaturan.', type: NotifType.warning);
         return;
       }
       LocationPermission permission = await Geolocator.checkPermission();
@@ -123,13 +124,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           setState(() => _isLoadingLocation = false);
-          _showSnack('Izin lokasi ditolak.');
+          _showSnack('Izin lokasi ditolak. Aplikasi memerlukan akses lokasi untuk navigasi.', type: NotifType.error);
           return;
         }
       }
       if (permission == LocationPermission.deniedForever) {
         setState(() => _isLoadingLocation = false);
-        _showSnack('Izin lokasi diblokir permanen.');
+        _showSnack('Izin lokasi diblokir permanen. Buka pengaturan untuk mengizinkan akses lokasi.', type: NotifType.error);
         return;
       }
       final position = await Geolocator.getCurrentPosition(
@@ -154,7 +155,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       );
     } catch (e) {
       setState(() => _isLoadingLocation = false);
-      _showSnack('Gagal menemukan lokasi.');
+      _showSnack('Gagal menemukan lokasi. Pastikan GPS aktif dan coba lagi.', type: NotifType.error);
     }
   }
 
@@ -501,7 +502,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   Future<void> _getRoute(PlaceModel destination, {bool showPreview = false, bool isReroute = false}) async {
     if (_userPosition == null) {
-      _showSnack('Lokasi kamu belum ditemukan.');
+      _showSnack('Lokasi kamu belum ditemukan. Tunggu GPS menemukan posisimu.', type: NotifType.warning);
       return;
     }
     setState(() {
@@ -628,7 +629,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       }
     } catch (e) {
       setState(() => _isLoadingRoute = false);
-      _showSnack('Gagal mengambil rute. Periksa koneksi internet.');
+      _showSnack('Gagal mengambil rute. Periksa koneksi internet Anda.', type: NotifType.error);
     }
   }
 
@@ -862,7 +863,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         if (!_isMuted) {
           _flutterTts.speak('Kamu telah sampai di tujuan');
         }
-        _showSnack('Kamu telah sampai di tujuan!');
+        _showSnack('Kamu telah sampai di tujuan!', type: NotifType.success);
         _stopNavigation();
       }
     }
@@ -871,7 +872,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Future<void> _rerouteFromCurrentPosition() async {
     if (_selectedPlace == null || _userPosition == null) return;
     if (!_isMuted) _flutterTts.speak('Menghitung ulang rute');
-    _showSnack('Menghitung ulang rute...');
+    _showSnack('Menghitung ulang rute...', type: NotifType.info);
     await _getRoute(_selectedPlace!, isReroute: true);
     if (mounted) {
       setState(() {
@@ -1081,11 +1082,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  void _showSnack(String message) {
+  void _showSnack(String message, {NotifType type = NotifType.info}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
-    );
+    AppNotification.show(context, message: message, type: type);
   }
 
   // ── Jam buka hari ini ──────────────────────────────────────

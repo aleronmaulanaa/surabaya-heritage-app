@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../utils/app_notification.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -35,12 +36,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
 
     if (success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content:         Text('Registrasi berhasil! Silakan masuk.'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      AppNotification.show(context, message: 'Registrasi berhasil! Silakan masuk.', type: NotifType.success);
       Navigator.pop(context);
     }
   }
