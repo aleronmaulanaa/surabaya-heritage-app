@@ -8,6 +8,8 @@ class AppNotification {
     required String message,
     NotifType type = NotifType.info,
     Duration duration = const Duration(seconds: 3),
+    String? actionLabel,
+    VoidCallback? onAction,
   }) {
     final (Color bg, IconData icon) = switch (type) {
       NotifType.success => (const Color(0xFF43A047), Icons.check_circle),
@@ -37,7 +39,31 @@ class AppNotification {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           duration: duration,
+          action: actionLabel != null
+              ? SnackBarAction(
+                  label: actionLabel,
+                  textColor: Colors.white,
+                  onPressed: onAction ?? () {},
+                )
+              : null,
         ),
       );
+  }
+
+  static void persistent(
+    BuildContext context, {
+    required String message,
+    NotifType type = NotifType.warning,
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
+    show(
+      context,
+      message: message,
+      type: type,
+      duration: const Duration(days: 1),
+      actionLabel: actionLabel,
+      onAction: onAction,
+    );
   }
 }

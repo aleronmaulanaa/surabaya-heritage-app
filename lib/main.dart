@@ -82,24 +82,20 @@ class _AppEntryState extends State<AppEntry> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF1E3A5F),
+      return Scaffold(
+        backgroundColor: Colors.white,
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.location_city, size: 80, color: Colors.white),
-              SizedBox(height: 16),
-              Text(
-                'Surabaya Heritage Map',
-                style: TextStyle(
-                  color:      Colors.white,
-                  fontSize:   24,
-                  fontWeight: FontWeight.bold,
-                ),
+              Image.asset(
+                'assets/images/logo_full.png',
+                width: 260,
               ),
-              SizedBox(height: 32),
-              CircularProgressIndicator(color: Colors.white),
+              const SizedBox(height: 32),
+              const CircularProgressIndicator(
+                color: Color(0xFF1E3A5F),
+              ),
             ],
           ),
         ),
@@ -259,8 +255,8 @@ class _OfflineDialogState extends State<_OfflineDialog>
               onPressed: widget.onClose,
               icon: const Icon(Icons.close, size: 20),
               style: IconButton.styleFrom(
-                backgroundColor: const Color(0xFFFFCDD2),
-                foregroundColor: const Color(0xFFE53935),
+                backgroundColor: const Color(0xFFE0E0E0),
+                foregroundColor: const Color(0xFF616161),
                 padding: const EdgeInsets.all(4),
                 minimumSize: const Size(32, 32),
               ),

@@ -23,7 +23,7 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
+class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   GoogleMapController? _mapController;
   Position? _userPosition;
   Set<Marker> _markers = {};
@@ -61,6 +61,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   int _advanceWarnedStep = -1;
   final FlutterTts _flutterTts = FlutterTts();
   Marker? _userVehicleMarker;
+  bool _awaitingLocationPermission = false;
+  bool _awaitingGpsEnable = false;
 
   // Navigation enter/exit animation
   late final AnimationController _navEnterController = AnimationController(
@@ -85,6 +87,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _getUserLocation();
     _initTts();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -101,12 +104,72 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _slideController.dispose();
     _positionStream?.cancel();
     _flutterTts.stop();
     _navEnterController.dispose();
     _navSheetCtrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        (_awaitingLocationPermission || _awaitingGpsEnable)) {
+      _recheckLocationAfterSettings();
+    }
+  }
+
+  Future<void> _recheckLocationAfterSettings() async {
+    if (_awaitingLocationPermission) {
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse) {
+        _awaitingLocationPermission = false;
+        _showSnack('Izin lokasi berhasil diberikan!', type: NotifType.success);
+        _getUserLocation();
+        return;
+      }
+      _showLocationPermissionNotif();
+      return;
+    }
+    if (_awaitingGpsEnable) {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (enabled) {
+        _awaitingGpsEnable = false;
+        _showSnack('GPS berhasil diaktifkan!', type: NotifType.success);
+        _getUserLocation();
+        return;
+      }
+      _showGpsDisabledNotif();
+    }
+  }
+
+  void _showLocationPermissionNotif() {
+    AppNotification.persistent(
+      context,
+      message: 'Izin lokasi diblokir. Ketuk untuk membuka pengaturan.',
+      type: NotifType.error,
+      actionLabel: 'Pengaturan',
+      onAction: () {
+        _awaitingLocationPermission = true;
+        Geolocator.openAppSettings();
+      },
+    );
+  }
+
+  void _showGpsDisabledNotif() {
+    AppNotification.persistent(
+      context,
+      message: 'GPS tidak aktif. Ketuk untuk mengaktifkan.',
+      type: NotifType.warning,
+      actionLabel: 'Aktifkan',
+      onAction: () {
+        _awaitingGpsEnable = true;
+        Geolocator.openLocationSettings();
+      },
+    );
   }
 
   // ── GPS ────────────────────────────────────────────────────
@@ -116,7 +179,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         setState(() => _isLoadingLocation = false);
-        _showSnack('Layanan lokasi (GPS) tidak aktif. Silakan aktifkan GPS di pengaturan.', type: NotifType.warning);
+        _showGpsDisabledNotif();
         return;
       }
       LocationPermission permission = await Geolocator.checkPermission();
@@ -124,13 +187,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           setState(() => _isLoadingLocation = false);
-          _showSnack('Izin lokasi ditolak. Aplikasi memerlukan akses lokasi untuk navigasi.', type: NotifType.error);
+          _showLocationPermissionNotif();
           return;
         }
       }
       if (permission == LocationPermission.deniedForever) {
         setState(() => _isLoadingLocation = false);
-        _showSnack('Izin lokasi diblokir permanen. Buka pengaturan untuk mengizinkan akses lokasi.', type: NotifType.error);
+        _showLocationPermissionNotif();
         return;
       }
       final position = await Geolocator.getCurrentPosition(
