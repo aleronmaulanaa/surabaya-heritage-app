@@ -1256,8 +1256,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               } else {
                 final base = _normalSheetHeight > 0
                     ? _normalSheetHeight
-                    : _bottomSheetHeight;
-                // Drag offset disesuaikan supaya seirama: dragOffset (0–1) × tinggi normal
+                    : bodyConstraints.maxHeight * 0.6;
                 final dragPixels = _dragOffset * base;
                 targetBottom = base + 16 - dragPixels;
                 if (targetBottom < 30) targetBottom = 30;
@@ -1287,7 +1286,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               builder: (context) {
                 final base = _normalSheetHeight > 0
                     ? _normalSheetHeight
-                    : _bottomSheetHeight;
+                    : bodyConstraints.maxHeight * 0.6;
                 final dragPixels = _dragOffset * base;
                 double targetBottom = base + 16 - dragPixels;
                 if (targetBottom < 30) targetBottom = 30;
@@ -1437,6 +1436,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                             _bottomSheetHeight = _normalSheetHeight;
                           }
                         });
+                        Future.delayed(const Duration(milliseconds: 400), () {
+                          if (mounted) setState(() {});
+                        });
                       } else if (_dragOffset > 0.15) {
                         _closeBottomSheet();
                       } else {
@@ -1558,13 +1560,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         key: ValueKey(_selectedPlace?.id ?? 0),
         onHeightChanged: (h) {
           if (!mounted) return;
-          final needsHeightUpdate = (h - _bottomSheetHeight).abs() > 1;
-          final needsNormalUpdate =
-              !_isExpanded && _normalSheetHeight == 0 && h > 0;
-          if (!needsHeightUpdate && !needsNormalUpdate) return;
+          final hUpdate = (h - _bottomSheetHeight).abs() > 1;
+          final nUpdate = !_isExpanded && h > 0 && (h - _normalSheetHeight).abs() > 1;
+          if (!hUpdate && !nUpdate) return;
           setState(() {
-            if (needsHeightUpdate) _bottomSheetHeight = h;
-            if (needsNormalUpdate) _normalSheetHeight = h;
+            _bottomSheetHeight = h;
+            if (!_isExpanded && h > 0) _normalSheetHeight = h;
           });
         },
         child: Column(
@@ -1599,6 +1600,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           if (_normalSheetHeight > 0) {
                             _bottomSheetHeight = _normalSheetHeight;
                           }
+                        });
+                        Future.delayed(const Duration(milliseconds: 400), () {
+                          if (mounted) setState(() {});
                         });
                         return true;
                       }
@@ -2136,13 +2140,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         key: ValueKey('route_${_selectedPlace?.id ?? 0}_$_transportMode'),
         onHeightChanged: (h) {
           if (!mounted) return;
-          final needsHeightUpdate = (h - _bottomSheetHeight).abs() > 1;
-          final needsNormalUpdate = !_isExpanded && h > 0 &&
-              (h - _normalSheetHeight).abs() > 1;
-          if (!needsHeightUpdate && !needsNormalUpdate) return;
+          final hUpdate = (h - _bottomSheetHeight).abs() > 1;
+          final nUpdate = !_isExpanded && h > 0 && (h - _normalSheetHeight).abs() > 1;
+          if (!hUpdate && !nUpdate) return;
           setState(() {
-            if (needsHeightUpdate) _bottomSheetHeight = h;
-            if (needsNormalUpdate) _normalSheetHeight = h;
+            _bottomSheetHeight = h;
+            if (!_isExpanded && h > 0) _normalSheetHeight = h;
           });
         },
         child: Column(
@@ -2172,6 +2175,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       if (_normalSheetHeight > 0) {
                         _bottomSheetHeight = _normalSheetHeight;
                       }
+                    });
+                    Future.delayed(const Duration(milliseconds: 400), () {
+                      if (mounted) setState(() {});
                     });
                   } else if (_dragOffset > 0.15) {
                     _cancelRoutePreview();
@@ -2337,6 +2343,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               if (_normalSheetHeight > 0) {
                                 _bottomSheetHeight = _normalSheetHeight;
                               }
+                            });
+                            Future.delayed(const Duration(milliseconds: 400), () {
+                              if (mounted) setState(() {});
                             });
                             return true;
                           }
