@@ -57,6 +57,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   int _currentStepIndex = 0;
   double _remainingDistance = 0;
   double _remainingDuration = 0;
+  int _advanceWarnedStep = -1;
   final FlutterTts _flutterTts = FlutterTts();
   Marker? _userVehicleMarker;
 
@@ -666,6 +667,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _showBottomSheet = false;
       _isMapCentered = true;
       _currentStepIndex = 0;
+      _advanceWarnedStep = -1;
       _remainingDistance = _routeDistance;
       _remainingDuration = _routeDuration;
       _navSheetCtrl.value = 0;
@@ -731,6 +733,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         _isNavigating = false;
         _isMapCentered = true;
         _currentStepIndex = 0;
+        _advanceWarnedStep = -1;
         _showRoutePreview = true;
         _routeEntryOffset = 0.0;
         _isExpanded = false;
@@ -779,13 +782,28 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     final stepChanged = stepIdx != _currentStepIndex;
 
+    final trimmedPoints = [userLatLng, ..._routePoints.sublist(nearestIdx)];
+    final isWalking = _transportMode == 'walking';
+
     setState(() {
       _remainingDistance = remaining;
       _remainingDuration = remainingDur;
       _currentStepIndex = stepIdx;
+      _polylines = {
+        Polyline(
+          polylineId: const PolylineId('route'),
+          points: trimmedPoints,
+          color: const Color(0xFF1E3A5F),
+          width: 5,
+          patterns: isWalking
+              ? [PatternItem.dash(20), PatternItem.gap(12)]
+              : [],
+        ),
+      };
     });
 
     if (stepChanged && stepIdx < _routeSteps.length) {
+      _advanceWarnedStep = -1;
       final step = _routeSteps[stepIdx];
       final text = _maneuverText(
         step['type'] as String,
@@ -794,6 +812,23 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       );
       if (!_isMuted) {
         _flutterTts.speak(text);
+      }
+    }
+
+    final nextStepIdx = stepIdx + 1;
+    if (nextStepIdx < _routeSteps.length && _advanceWarnedStep != nextStepIdx) {
+      final distToNextStep = _distanceToStepManeuver(nearestIdx, nextStepIdx);
+      if (distToNextStep <= 200 && distToNextStep > 10) {
+        _advanceWarnedStep = nextStepIdx;
+        final nextStep = _routeSteps[nextStepIdx];
+        final warning = 'Dalam ${distToNextStep.toStringAsFixed(0)} meter, ${_maneuverText(
+          nextStep['type'] as String,
+          nextStep['modifier'] as String,
+          nextStep['name'] as String,
+        )}';
+        if (!_isMuted) {
+          _flutterTts.speak(warning);
+        }
       }
     }
 
@@ -843,6 +878,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         _remainingDistance = _routeDistance;
         _remainingDuration = _routeDuration;
         _currentStepIndex = 0;
+        _advanceWarnedStep = -1;
       });
     }
   }
@@ -891,6 +927,21 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       if (cumulative > distFromStart) return i;
     }
     return _routeSteps.length - 1;
+  }
+
+  double _distanceToStepManeuver(int nearestRoutePointIdx, int targetStepIdx) {
+    double cumStepDist = 0;
+    for (int i = 0; i < targetStepIdx && i < _routeSteps.length; i++) {
+      cumStepDist += (_routeSteps[i]['distance'] as double);
+    }
+    double distFromStart = 0;
+    for (int i = 0;
+        i < nearestRoutePointIdx && i < _routePoints.length - 1;
+        i++) {
+      distFromStart +=
+          _distanceBetween(_routePoints[i], _routePoints[i + 1]);
+    }
+    return (cumStepDist - distFromStart).clamp(0, double.infinity);
   }
 
   void _recenterMap() {
