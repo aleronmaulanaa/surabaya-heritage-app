@@ -70,7 +70,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     curve: Curves.easeOutCubic,
   );
   // Nav bottom sheet
-  double _navSheetFraction = 0.0;
+  bool _navExpanded = false;
+  double _navDragOffset = 0.0;
 
   static const CameraPosition _surabayaCenter = CameraPosition(
     target: LatLng(-7.2575, 112.7521),
@@ -664,7 +665,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _currentStepIndex = 0;
       _remainingDistance = _routeDistance;
       _remainingDuration = _routeDuration;
-      _navSheetFraction = 0.0;
+      _navExpanded = false;
 
       _userVehicleMarker = Marker(
         markerId: const MarkerId('__user_vehicle__'),
@@ -731,7 +732,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         _routeEntryOffset = 0.0;
         _isExpanded = false;
         _dragOffset = 0;
-        _navSheetFraction = 0.0;
+        _navExpanded = false;
         _userVehicleMarker = null;
         _markers = _markers.where((m) => m.markerId.value != '__user_vehicle__').toSet();
       });
@@ -1451,10 +1452,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           // ── Navigation mode UI ─────────────────────────────
           if (_isNavigating && _selectedPlace != null) ...[
             // Tap outside to close expanded nav bottom sheet
-            if (_navSheetFraction > 0.1)
+            if (_navExpanded)
               Positioned.fill(
                 child: GestureDetector(
-                  onTap: () => _animateNavSheet(0.0),
+                  onTap: () => setState(() => _navExpanded = false),
                   behavior: HitTestBehavior.translucent,
                   child: const SizedBox.expand(),
                 ),
@@ -2695,24 +2696,32 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     final double expandedMax = maxHeight * 0.6;
     final double stepsMaxHeight = expandedMax - 130;
-    final double stepsHeight = stepsMaxHeight * _navSheetFraction;
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onVerticalDragUpdate: (details) {
-        final delta = -details.delta.dy / 150.0;
-        setState(() {
-          _navSheetFraction = (_navSheetFraction + delta).clamp(0.0, 1.0);
-        });
+        if (!_navExpanded) return;
+        if (details.delta.dy > 0) {
+          setState(() {
+            _navDragOffset =
+                (_navDragOffset + details.delta.dy / 300).clamp(0.0, 1.0);
+          });
+        }
       },
       onVerticalDragEnd: (details) {
-        final velocity = -details.primaryVelocity!;
-        final bool shouldExpand;
-        if (velocity.abs() > 200) {
-          shouldExpand = velocity > 0;
-        } else {
-          shouldExpand = _navSheetFraction > 0.35;
+        final velocity = details.primaryVelocity ?? 0;
+        if (!_navExpanded && velocity < -300) {
+          setState(() => _navExpanded = true);
+        } else if (_navExpanded) {
+          if (velocity > 300 || _navDragOffset > 0.15) {
+            setState(() {
+              _navExpanded = false;
+              _navDragOffset = 0;
+            });
+          } else {
+            setState(() => _navDragOffset = 0);
+          }
         }
-        _animateNavSheet(shouldExpand ? 1.0 : 0.0);
       },
       child: Container(
         decoration: BoxDecoration(
@@ -2729,14 +2738,27 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
+            GestureDetector(
+              onTap: () {
+                if (_navExpanded) {
+                  setState(() {
+                    _navExpanded = false;
+                    _navDragOffset = 0;
+                  });
+                } else {
+                  setState(() => _navExpanded = true);
+                }
+              },
+              behavior: HitTestBehavior.opaque,
+              child: Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
             ),
@@ -2809,70 +2831,82 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ),
             ),
             if (_routeSteps.isNotEmpty)
-              ClipRect(
-                child: SizedBox(
-                  height: stepsHeight,
-                  child: Opacity(
-                    opacity: _navSheetFraction.clamp(0.0, 1.0),
-                    child: Column(
-                      children: [
-                        Divider(height: 1, color: Colors.grey.shade200),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-                          child: Row(
-                            children: [
-                              const Text(
-                                'Panduan Rute',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF1E3A5F),
-                                ),
+              AnimatedSlide(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+                offset: Offset(0, _navDragOffset),
+                child: AnimatedSize(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                  child: _navExpanded
+                    ? SizedBox(
+                        height: stepsMaxHeight,
+                        child: Column(
+                          children: [
+                            Divider(height: 1, color: Colors.grey.shade300),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                              child: Row(
+                                children: [
+                                  const Text(
+                                    'Panduan Rute',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF1E3A5F),
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    '${_currentStepIndex + 1} / ${_routeSteps.length}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade500,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const Spacer(),
-                              Text(
-                                '${_currentStepIndex + 1} / ${_routeSteps.length}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: ListView.separated(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                            physics: const BouncingScrollPhysics(),
-                            itemCount: _routeSteps.length,
-                            separatorBuilder: (_, __) => Divider(
-                              height: 1,
-                              color: Colors.grey.shade200,
                             ),
-                            itemBuilder: (_, i) {
-                              final isCurrent = i == _currentStepIndex;
-                              final isPast = i < _currentStepIndex;
-                              return Opacity(
-                                opacity: isPast ? 0.4 : 1.0,
-                                child: Container(
-                                  decoration: isCurrent
-                                      ? BoxDecoration(
-                                          color: const Color(0xFF0D6B58).withOpacity(0.08),
-                                          borderRadius: BorderRadius.circular(8),
-                                        )
-                                      : null,
-                                  padding: isCurrent
-                                      ? const EdgeInsets.symmetric(horizontal: 6, vertical: 2)
-                                      : EdgeInsets.zero,
-                                  child: _buildStepItem(_routeSteps[i]),
+                            Expanded(
+                              child: ListView.separated(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                                physics: const BouncingScrollPhysics(),
+                                itemCount: _routeSteps.length,
+                                separatorBuilder: (_, __) => Divider(
+                                  height: 1,
+                                  color: Colors.grey.shade200,
                                 ),
-                              );
-                            },
-                          ),
+                                itemBuilder: (_, i) {
+                                  final isCurrent = i == _currentStepIndex;
+                                  final isPast = i < _currentStepIndex;
+                                  return Opacity(
+                                    opacity: isPast ? 0.4 : 1.0,
+                                    child: Container(
+                                      decoration: isCurrent
+                                          ? BoxDecoration(
+                                              color: const Color(0xFF0D6B58)
+                                                  .withOpacity(0.08),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            )
+                                          : null,
+                                      padding: isCurrent
+                                          ? const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 2)
+                                          : EdgeInsets.zero,
+                                      child:
+                                          _buildStepItem(_routeSteps[i]),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
+                      )
+                    : const SizedBox.shrink(),
                 ),
               ),
           ],
@@ -2881,35 +2915,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  void _animateNavSheet(double target) {
-    final start = _navSheetFraction;
-    if ((start - target).abs() < 0.01) {
-      setState(() => _navSheetFraction = target);
-      return;
-    }
-    final controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    final animation = CurvedAnimation(
-      parent: controller,
-      curve: Curves.easeOutCubic,
-    );
-    animation.addListener(() {
-      if (mounted) {
-        setState(() {
-          _navSheetFraction = start + (target - start) * animation.value;
-        });
-      }
-    });
-    controller.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        if (mounted) setState(() => _navSheetFraction = target);
-        controller.dispose();
-      }
-    });
-    controller.forward();
-  }
 
   // ── Helper: nama + kategori + rating ────────────────────────
   Widget _buildNameSection(PlaceModel place) {
