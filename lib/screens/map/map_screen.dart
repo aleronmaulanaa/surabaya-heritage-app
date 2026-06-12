@@ -1433,6 +1433,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         setState(() {
                           _isExpanded = false;
                           _dragOffset = 0;
+                          if (_normalSheetHeight > 0) {
+                            _bottomSheetHeight = _normalSheetHeight;
+                          }
                         });
                       } else if (_dragOffset > 0.15) {
                         _closeBottomSheet();
@@ -1593,6 +1596,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         setState(() {
                           _isExpanded = false;
                           _dragOffset = 0;
+                          if (_normalSheetHeight > 0) {
+                            _bottomSheetHeight = _normalSheetHeight;
+                          }
                         });
                         return true;
                       }
@@ -2127,12 +2133,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         maxHeight: _isExpanded ? bodyHeight - 8 : normalMaxHeight,
       ),
       child: _MeasuredColumn(
-        key: ValueKey('route_${_selectedPlace?.id ?? 0}'),
+        key: ValueKey('route_${_selectedPlace?.id ?? 0}_$_transportMode'),
         onHeightChanged: (h) {
           if (!mounted) return;
           final needsHeightUpdate = (h - _bottomSheetHeight).abs() > 1;
-          final needsNormalUpdate =
-              !_isExpanded && _normalSheetHeight == 0 && h > 0;
+          final needsNormalUpdate = !_isExpanded && h > 0 &&
+              (h - _normalSheetHeight).abs() > 1;
           if (!needsHeightUpdate && !needsNormalUpdate) return;
           setState(() {
             if (needsHeightUpdate) _bottomSheetHeight = h;
@@ -2163,6 +2169,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     setState(() {
                       _isExpanded = false;
                       _dragOffset = 0;
+                      if (_normalSheetHeight > 0) {
+                        _bottomSheetHeight = _normalSheetHeight;
+                      }
                     });
                   } else if (_dragOffset > 0.15) {
                     _cancelRoutePreview();
@@ -2325,6 +2334,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                             setState(() {
                               _isExpanded = false;
                               _dragOffset = 0;
+                              if (_normalSheetHeight > 0) {
+                                _bottomSheetHeight = _normalSheetHeight;
+                              }
                             });
                             return true;
                           }
